@@ -49,7 +49,13 @@ export class Workstation {
         command: `Xvfb :${n} -ac -screen 0 ${width}x${height}x24 -dpi 96 -nolisten tcp`,
         priority: 10,
       },
-      { name: "wm", command: "xfwm4 --compositor=off", env: { DISPLAY: `:${n}` }, priority: 20 },
+      {
+        name: "wm",
+        // A solid backdrop so the screen's edges read clearly in the app
+        command: `sh -c 'xsetroot -solid "#23232f" 2>/dev/null; exec xfwm4 --compositor=off'`,
+        env: { DISPLAY: `:${n}` },
+        priority: 20,
+      },
       {
         name: "panel",
         command: "xfce4-panel --disable-wm-check",

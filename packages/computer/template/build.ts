@@ -8,7 +8,7 @@ const name = process.env.E2B_TEMPLATE_NAME || "crew-computer"
 const template = Template()
   .fromTemplate("desktop")
   .setUser("root")
-  .aptInstall(["supervisor", "xdotool", "scrot", "x11vnc", "curl", "ca-certificates", "jq", "git", "ripgrep"], {
+  .aptInstall(["supervisor", "xdotool", "scrot", "x11vnc", "curl", "ca-certificates", "jq", "git", "ripgrep", "x11-xserver-utils"], {
     noInstallRecommends: true,
   })
   .runCmd([
