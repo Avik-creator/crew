@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+onlyBuiltDependencies:
+  - electron
+  - esbuild
+  - "@nut-tree-fork/libnut-darwin"
+  - "@nut-tree-fork/libnut-linux"
+  - "@nut-tree-fork/libnut-win32"
