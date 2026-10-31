@@ -359,7 +359,10 @@ export const connections = pgTable(
     bridgeToken: text("bridge_token"), // encrypted
     scopes: text("scopes"),
     accountLabel: text("account_label"),
-    toolsCache: jsonb("tools_cache").$type<{ name: string; description?: string }[]>(),
+    // Authorization server discovered during the OAuth flow
+    authServer: jsonb("auth_server").$type<{ issuer?: string; authorizationServerUrl: string; tokenEndpoint: string }>(),
+    // Full MCP tool definitions so turns skip tools/list
+    toolsCache: jsonb("tools_cache").$type<CachedTool[]>(),
     toolsCachedAt: timestamp("tools_cached_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -519,6 +522,14 @@ export const messagesRelations = relations(messages, ({ one }) => ({
 export const connectionsRelations = relations(connections, ({ one }) => ({
   server: one(mcpServers, { fields: [connections.serverId], references: [mcpServers.id] }),
 }))
+
+export type CachedTool = {
+  name: string
+  title?: string
+  description?: string
+  inputSchema: { type?: unknown; properties?: Record<string, unknown>; [k: string]: unknown }
+  annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; [k: string]: unknown }
+}
 
 export type Bot = typeof bots.$inferSelect
 export type Thread = typeof threads.$inferSelect
