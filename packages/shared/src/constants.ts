@@ -38,3 +38,12 @@ export const DEEP_LINK_SCHEME = "crew"
 export const BOT_NAME_MAX = 50
 export const BOT_JOB_MAX = 100
 export const BOT_INSTRUCTIONS_MAX = 4000
+
+// Trigger.dev ids shared by the tasks, the server and the app
+export const TRIGGER = {
+  botTurn: "bot-turn",
+  scheduledTurn: "scheduled-turn",
+  scheduledTurnOnce: "scheduled-turn-once",
+  // Realtime stream carrying a turn's AI SDK UI message chunks
+  uiStream: "ui",
+} as const
