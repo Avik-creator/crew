@@ -7,3 +7,7 @@ onlyBuiltDependencies:
   - "@nut-tree-fork/libnut-darwin"
   - "@nut-tree-fork/libnut-linux"
   - "@nut-tree-fork/libnut-win32"
+overrides:
+  # One copy keeps drizzle-orm deduplicated (it peers on this) and satisfies
+  # Trigger.dev's <1.10 peer range
+  "@opentelemetry/api": "1.9.1"
