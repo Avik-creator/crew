@@ -839,6 +839,40 @@ Every app goes through the generic MCP layer. Which tier depends on what exists 
 | **9. Takeover + logins** | `request_takeover`, interactive VNC, storage-state sharing | CAPTCHA handed to you and resumed; one sign-in used by two bots |
 | **10. Polish (P2)** | Schedules, routines, search, auto-update, Windows/Linux builds (including local mode) | — |
 
+### 14.1 Build log (2026-11-01)
+
+All phases from 0 to 10 are built in the repo (`github.com/Avik-creator/crew`, private). The table says what was verified and how. **"Verified live"** means it ran against real services in this build. **"Built, not run"** means it compiles and typechecks, but has not run end to end because the keys it needs (Neon AI Gateway, Trigger.dev, OAuth apps) aren't in `.env` yet.
+
+| Phase | Status | What exists | How it was checked |
+|---|---|---|---|
+| 0. Feasibility | Done | Multi-display, VNC behind the access header, xdotool, shared Chrome logins, stdio bridge, pause/resume | Verified live on E2B (spike, then `packages/computer/scripts/smoke.ts`) |
+| 1. Foundation | Done | pnpm monorepo, Hono server, Better Auth (email/password + bearer), Drizzle schema on Postgres, Electron shell | Verified live: sign-up/sign-in and every REST route, against Postgres in Docker |
+| 2. Bots + direct chat | Built, not run | Bot CRUD, `bot-turn` Trigger task, AI SDK `streamText` on the Neon gateway, live streaming to the app via Trigger realtime streams, messages saved to Postgres | Bot CRUD verified live. Turns need `NEON_AI_GATEWAY_*` and `TRIGGER_SECRET_KEY` |
+| 3. Shared computer | Done | `ComputerProvider` (E2B + Daytona), template build, per-user computer, supervisord displays, `CloudDisplayDriver`, screen proxy, live panel with take control, idle pause, maintenance cron | Verified live: two displays at once, actions with screenshots, noVNC through our proxy inside the app, resume in 420 ms |
+| 4. Local mode | Built, partly run | Device linking, relay, `DeviceDriver`, shell/files/screen/mouse/keyboard on the Mac (nut.js, desktopCapturer), allowed folders, command rules, overlay, ⌘⇧Esc kill switch, audit log, tray | Relay verified live with a fake device (`apps/server/scripts/relay-smoke.ts`). Real Mac input not yet exercised; it needs the Screen Recording and Accessibility permissions |
+| 5. Memory | Built | `remember`/`forget` tools, shared facts, Memory page | REST verified live. The tools run inside turns |
+| 6. MCP layer | Built, not run | Catalog (GitLab, GitHub, Google, Linear, Notion, Sentry + stdio templates), DB-backed `OAuthClientProvider`, `ConnectFlow` interface, pluggable transports (remote HTTP, first-party, cloud stdio via supergateway, Mac stdio via relay), cached tool lists, rule-based approval policy, first-party Google server (Gmail, Calendar, Drive), tool permission UI | Catalog, seeding and UI verified live. OAuth needs the apps registered (see `.env.example`) |
+| 7. Bot-to-bot | Built, not run | `messageBot`, private bot-pair threads, replies delivered back to the asking bot's conversation, hop limit, daily wake budget, per-bot queue (`concurrencyKey`) | Needs turns |
+| 8. Groups + router | Built | Group CRUD, router (`generateText` + structured output, max 2 responders), @mentions skip the router, `handoff`, owner tracking | Group CRUD verified live. Routing needs the gateway |
+| 9. Takeover + logins | Built | `requestTakeover`, takeover cards, interactive VNC (take control), shared logins via `saveLogins` | VNC control verified live |
+| 10. Polish (P2) | Built (macOS) | Schedules (recurring via Trigger schedules, one-off via delayed runs, run now), Postgres full-text search in ⌘K, auto-update from GitHub Releases, notifications, dock badge | Search verified live. Windows/Linux builds are not configured yet; electron-builder targets macOS |
+
+**Changes from the plan above** (each one simplifies the system or reuses an existing library):
+
+- **Name:** the app is called **Crew**, and its deep-link scheme is `crew://` (not `aiteam://`).
+- **Turns:** each one is our own `bot-turn` task, not Trigger's `chat.agent`. `chat.agent` assumes one agent per conversation with history held in Trigger. Crew has several bots per thread, keeps Neon as the source of truth, and wakes bots from routing. The UI chunks still stream over Trigger realtime streams (`streams.define` + `useRealtimeStream`).
+- **Approvals:** these use **AI SDK v7's native `toolApproval`** instead of wait tokens and polling. A turn ends with the tool call in `approval-requested`. The decision is written into the stored message, and a new turn continues it. The `approvals` table remains for the inbox and notifications.
+- **Processes on the computer:** **supervisord** runs them (one generated config per display or bridge) instead of hand-written shell loops.
+- **stdio bridge:** **supergateway** exposes local-command servers as streamable HTTP. Access goes through E2B's traffic token alone, without our own bridge bearer.
+- **Connector OAuth:** remote servers use `@ai-sdk/mcp`'s `auth()` with a DB-backed `OAuthClientProvider`. Google uses `google-auth-library` and the `@googleapis/*` clients. Both sit behind one `ConnectFlow` interface.
+- **First-party MCP server:** it uses the MCP SDK's `WebStandardStreamableHTTPServerTransport` mounted in Hono (no extra adapter).
+- **Sign-in:** email/password with a bearer token kept in the macOS keychain (`safeStorage`). `@better-auth/electron` needs a hosted web sign-in page, which can be added later for social login.
+- **Protocol schemas:** the device protocol lives in `packages/shared`.
+- **Package manager:** pnpm 10 (pnpm 11.11 deadlocked during install).
+- **Dependency pin:** `@opentelemetry/api` is pinned to 1.9.1, so drizzle-orm resolves to a single copy.
+
+**Not done yet:** a live end-to-end turn with real keys, live OAuth connections, real Mac input, Windows/Linux packaging, code signing and notarization, and Sentry.
+
 ---
 
 ## 15. Environment and accounts (gathered at the end)
