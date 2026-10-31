@@ -46,6 +46,9 @@ export const threadRoutes = new Hono<AppEnv>()
         botIds: members.filter((m) => m.threadId === t.id).map((m) => m.botId),
         unread: t.lastMessageAt > t.lastReadAt,
         working: active.filter((r) => r.threadId === t.id).map((r) => r.botId),
+        activeRuns: active
+          .filter((r) => r.threadId === t.id && r.triggerRunId)
+          .map((r) => ({ botId: r.botId, triggerRunId: r.triggerRunId! })),
       })),
     )
   })
@@ -62,7 +65,7 @@ export const threadRoutes = new Hono<AppEnv>()
       await tx.insert(threadMembers).values(input.botIds.map((botId) => ({ threadId: t!.id, botId })))
       return t!
     })
-    return c.json({ ...thread, botIds: input.botIds, unread: false, working: [] }, 201)
+    return c.json({ ...thread, botIds: input.botIds, unread: false, working: [], activeRuns: [] }, 201)
   })
   .get("/:id", async (c) => {
     const user = c.get("user")
