@@ -1,3 +1,4 @@
+import type { TurnReason } from "@crew/shared"
 import { relations, sql } from "drizzle-orm"
 import {
   boolean,
@@ -278,7 +279,7 @@ export const runs = pgTable(
       .references(() => bots.id, { onDelete: "cascade" }),
     threadId: text("thread_id").references(() => threads.id, { onDelete: "cascade" }),
     trigger: text("trigger")
-      .$type<"chat" | "wake" | "schedule" | "group" | "approval" | "takeover" | "handoff">()
+      .$type<TurnReason>()
       .notNull(),
     status: text("status")
       .$type<"queued" | "running" | "waiting" | "completed" | "failed" | "cancelled">()

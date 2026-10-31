@@ -52,3 +52,28 @@ export type CrewMessageMetadata = {
 
 // Prefixed MCP tool names: "<serverSlug>__<toolName>"
 export const MCP_TOOL_SEPARATOR = "__"
+
+// Why a bot is taking a turn
+export type TurnReason =
+  | "chat" // the person wrote to it
+  | "group" // picked by the router or @mentioned in a group
+  | "handoff" // another bot in a group passed it the work
+  | "bot_message" // another bot messaged it directly
+  | "reply" // a bot it messaged answered
+  | "approval" // the person decided on a pending tool call
+  | "takeover" // the person finished taking over the screen
+  | "schedule" // a schedule fired
+  | "wake" // anything else that wakes it
+
+// One bot turn, as queued to the bot-turn task
+export type TurnPayload = {
+  threadId: string
+  botId: string
+  reason: TurnReason
+  // Bot-to-bot chains share an id; hop counts the bounces
+  chainId: string
+  hop: number
+  triggerMessageId?: string | null
+  // Nobody is watching: send-type tools are hidden, approvals go to the inbox
+  background?: boolean
+}
