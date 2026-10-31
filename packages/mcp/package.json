@@ -1,0 +1,26 @@
+{
+  "name": "@crew/mcp",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/mcp": "^2.0.88",
+    "@crew/computer": "workspace:*",
+    "@crew/db": "workspace:*",
+    "@crew/shared": "workspace:*",
+    "@googleapis/calendar": "20.1.0",
+    "@googleapis/drive": "26.0.2",
+    "@googleapis/gmail": "22.0.2",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "ai": "^7.0.159",
+    "drizzle-orm": "^0.45.4",
+    "google-auth-library": "11.3.1",
+    "mimetext": "3.0.28",
+    "zod": "^4.6.7"
+  }
+}
