@@ -269,7 +269,7 @@ export async function runTurn(payload: TurnPayload, deps: TurnDeps): Promise<Tur
               threadId: thread.id,
               kind: info ? ("mcp" as const) : ("device" as const),
               serverId: info?.serverId ?? null,
-              toolName: name,
+              toolName: info?.toolName ?? name,
               toolCallId: p.approval!.id,
               title: info ? `${info.title} in ${info.serverName}` : name,
               input: (p.input ?? {}) as Record<string, unknown>,
