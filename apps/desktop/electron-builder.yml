@@ -1,0 +1,32 @@
+appId: dev.crew.desktop
+productName: Crew
+directories:
+  buildResources: build
+  output: release/${version}
+files:
+  - "!**/.vscode/*"
+  - "!src/*"
+  - "!electron.vite.config.*"
+  - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
+asarUnpack:
+  - resources/**
+  - "**/node_modules/@nut-tree-fork/**"
+protocols:
+  - name: Crew
+    schemes: [crew]
+mac:
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSScreenCaptureUsageDescription: Crew lets bots you choose see your screen while they work.
+    NSAppleEventsUsageDescription: Crew lets bots you choose control apps while they work.
+  target: [dmg, zip]
+dmg:
+  artifactName: ${productName}-${version}.${ext}
+# Auto-update (P2): GitHub Releases of the private repo
+publish:
+  provider: github
+  owner: Avik-creator
+  repo: crew
+  private: true
