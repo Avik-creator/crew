@@ -63,7 +63,8 @@ export async function loadHistory(threadId: string, botId: string, limit: number
     } else if (m.authorType === "bot") {
       out.push(asOtherAuthor(m, names.get(m.authorId ?? "") ?? "Another bot"))
     } else {
-      out.push(asOtherAuthor(m, "Note"))
+      const schedule = (m.metadata as { scheduleName?: string } | null)?.scheduleName
+      out.push(asOtherAuthor(m, schedule ? `Scheduled task "${schedule}"` : "Note"))
     }
   }
   // A history can't start with a dangling assistant turn on some providers
