@@ -1,0 +1,20 @@
+{
+  "name": "@crew/db",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./schema": "./src/schema.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "push": "drizzle-kit push",
+    "generate": "drizzle-kit generate",
+    "studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@crew/shared": "workspace:*",
+    "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.45.4",
+    "nanoid": "^5.1.6",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": { "@types/pg": "^8.15.6", "drizzle-kit": "^0.31.11" }
+}
