@@ -163,3 +163,30 @@ export async function getComputerStatus(userId: string) {
   const [row] = await db.select().from(computers).where(eq(computers.userId, userId))
   return row ?? null
 }
+
+// Brings stored status in line with the provider (sandboxes pause themselves
+// when idle) and cycles computers that near the provider's continuous-runtime cap
+export async function maintainComputers() {
+  const rows = await db.select().from(computers).where(eq(computers.status, "running"))
+  let paused = 0
+  let cycled = 0
+  for (const row of rows) {
+    if (!row.sandboxId) continue
+    const provider = getProvider(row.provider)
+    const running = await provider.isRunning(row.sandboxId)
+    if (!running) {
+      cache.delete(row.userId)
+      await db.update(computers).set({ status: "paused" }).where(eq(computers.id, row.id))
+      emit(row.userId, "paused")
+      paused++
+      continue
+    }
+    const since = row.lastResumedAt?.getTime() ?? row.createdAt.getTime()
+    if (Date.now() - since > LIMITS.computerMaxContinuousMs) {
+      // A pause resets the runtime clock; the next tool call resumes it
+      await pauseComputer(row.userId)
+      cycled++
+    }
+  }
+  return { checked: rows.length, paused, cycled }
+}

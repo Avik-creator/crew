@@ -13,6 +13,7 @@ export {
   getDisplayDriver,
   getScreenUpstream,
   getWorkstation,
+  maintainComputers,
   onComputerStatus,
   pauseComputer,
   releaseDisplay,
