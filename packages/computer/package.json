@@ -1,0 +1,21 @@
+{
+  "name": "@crew/computer",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "template:build": "tsx --env-file=../../.env template/build.ts",
+    "smoke": "tsx --env-file=../../.env scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@crew/shared": "workspace:*",
+    "@daytona/sdk": "^0.227.0",
+    "@e2b/desktop": "^2.5.0",
+    "e2b": "^2.62.0",
+    "@crew/db": "workspace:*",
+    "drizzle-orm": "^0.45.4"
+  }
+}
