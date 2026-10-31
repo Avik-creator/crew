@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto"
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto"
 
 // Server-only helpers. Not exported from the package root so the desktop
 // renderer never pulls node:crypto in.
@@ -77,4 +77,22 @@ export async function internalFetch(path: string, init: RequestInit = {}) {
   })
   if (!res.ok) throw new Error(`${init.method ?? "GET"} ${path} failed: ${res.status} ${await res.text()}`)
   return res
+}
+
+// Short-lived signed tokens (first-party MCP calls, device relay sockets,
+// screen tickets). Format: base64url(json).base64url(hmac)
+export function signToken<T extends object>(payload: T, ttlSec: number): string {
+  const body = Buffer.from(JSON.stringify({ ...payload, exp: Math.floor(Date.now() / 1000) + ttlSec })).toString("base64url")
+  const sig = createHmac("sha256", key()).update(body).digest("base64url")
+  return `${body}.${sig}`
+}
+
+export function verifyToken<T extends object>(token: string | null | undefined): T | null {
+  if (!token) return null
+  const [body, sig] = token.split(".")
+  if (!body || !sig) return null
+  const expected = createHmac("sha256", key()).update(body).digest("base64url")
+  if (!safeEqual(sig, expected)) return null
+  const data = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as T & { exp: number }
+  return data.exp * 1000 > Date.now() ? data : null
 }
