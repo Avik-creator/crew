@@ -68,8 +68,14 @@ export const deviceToServerSchema = z.discriminatedUnion("type", [
     capabilities: deviceCapabilitiesSchema,
     allowedPaths: z.array(z.string()),
   }),
-  z.object({ type: z.literal("result"), id: z.string(), ok: z.literal(true), output: z.unknown() }),
-  z.object({ type: z.literal("result"), id: z.string(), ok: z.literal(false), error: z.string() }),
+  // ok=true carries output, ok=false carries error
+  z.object({
+    type: z.literal("result"),
+    id: z.string(),
+    ok: z.boolean(),
+    output: z.unknown().optional(),
+    error: z.string().optional(),
+  }),
   z.object({ type: z.literal("progress"), id: z.string(), chunk: z.string() }),
   z.object({
     type: z.literal("audit"),
