@@ -1,8 +1,12 @@
+<img src="apps/desktop/build/icon.png" alt="Crew app icon" width="96" />
+
 # Crew
 
 Crew is a Mac app for AI teammates. Each bot has a job, a chat, and its own screen. One person shares one cloud computer across their bots, so they share files and browser logins and do not fight over the mouse. A bot can instead use this Mac. Connected apps come in through MCP. Turns run in the background, so closing the laptop does not stop the work.
 
-[![The window, 23 seconds. You ask Yolo if he can use the Mac. He says he only has the cloud computer. Then he and Ava talk in their own thread.](docs/crew-poster.jpg)](docs/crew.mp4)
+![A chat with Crew, the main assistant. You ask it to have Evan look up the weather in Bhutan. Crew messages Evan, the chat shows "Evan replied", and Crew sums up the answer with its source.](docs/crew-chat.jpg)
+
+An earlier 23-second recording, from before the redesign: [docs/crew.mp4](docs/crew.mp4).
 
 It is a learning build of how a Grok Bot-style teammate works on the inside. The product model follows that shape. The architecture decisions are mine, and the source of Grok Bot is not. A longer walkthrough, with the flow and the tradeoffs, is at [avikmukherjee.com/blog/crew](https://avikmukherjee.com/blog/crew). The design notes and the build log are in [PRD.md](PRD.md).
 
@@ -11,7 +15,7 @@ It is a learning build of how a Grok Bot-style teammate works on the inside. The
 - Read the thread and reply, including while you watch the text and the tool calls stream in.
 - Use a 1280×800 screen on the shared cloud computer: browser, shell, and files. Or use this Mac, with command rules and a kill shortcut (`⌘⇧Esc`).
 - Call the apps you connect. An active connection is available to every bot on the account. Tools that write can ask first.
-- Message another bot. That exchange lives in its own thread. You can read it. The answer is copied back into yours.
+- Message another bot. That exchange lives in its own thread, which you can read. In your chat you see who replied, and the bot that asked sums up the answer.
 - Take a turn in a group. An @mention picks the bot. Otherwise a small router model does.
 - Run on a schedule, once or on a cron, in the bot's own thread.
 
