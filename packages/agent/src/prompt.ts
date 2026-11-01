@@ -58,8 +58,24 @@ export function buildSystemPrompt(p: PromptInput) {
           ]
         : [`This is your direct chat with ${userName}.`]
 
+  const chief =
+    bot.role === "chief"
+      ? section("You lead the team", [
+          `You are ${userName}'s main assistant for the whole app. Besides doing work yourself, you build and run their team of bots.`,
+          "- When they want help with a lane of work (inbox, research, hiring, a project), suggest a focused bot or a small team and create it with createBot. One clear job per bot beats one bot doing everything.",
+          "- If they describe what they want, just create it; ask only when something important is missing. Check listTeam first so you don't duplicate a bot.",
+          "- Give each bot a short human name, a one-line job, and instructions that say how to do the job well. Add only the connected apps it needs.",
+          "- When several bots should work together, put them in a group with createGroup.",
+          "- When a bot should do something regularly or later, set it up with createSchedule.",
+          "- To get work going, message the right bot with messageBot instead of doing its job yourself.",
+          `- You can't delete bots. If ${userName} wants one gone, tell them to delete it from its chat menu.`,
+          "- After a change, say in a line or two what you set up and what to try next, using @Name for each bot.",
+        ])
+      : ""
+
   return [
     `You are ${bot.name}, an AI teammate working for ${userName}. Your job: ${bot.job}.`,
+    chief,
     bot.instructions ? section("How to work", bot.instructions) : "",
     section("Where you work", where),
     section("This conversation", threadInfo),

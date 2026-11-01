@@ -39,6 +39,7 @@ import { collabTools } from "./tools/collab"
 import { appTools } from "./tools/apps"
 import { computerTools } from "./tools/computer"
 import { loadMemories, memoryTools } from "./tools/memory"
+import { teamTools } from "./tools/team"
 
 export type TurnDeps = {
   dispatcher: TurnDispatcher
@@ -210,6 +211,7 @@ export async function runTurn(payload: TurnPayload, deps: TurnDeps): Promise<Tur
       ...(driver.apps ? appTools(driver.apps) : {}),
       ...memoryTools(ctx),
       ...collabTools(ctx, originThreadId),
+      ...(bot.role === "chief" ? teamTools(ctx) : {}),
       ...connectors.tools,
     })
     const builtin = await builtinApproval({ runsOn: bot.runsOn, deviceId: bot.deviceId })
