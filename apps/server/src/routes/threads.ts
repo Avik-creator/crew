@@ -1,4 +1,4 @@
-import { enqueueTurn, routeGroupMessage, runStreamToken, cancelRun, saveMessage } from "@crew/agent"
+import { enqueueTurn, ensureChief, routeGroupMessage, runStreamToken, cancelRun, saveMessage } from "@crew/agent"
 import { bots, db, messages, runs, threadMembers, threads } from "@crew/db"
 import { groupInputSchema, sendMessageSchema, type TurnReason } from "@crew/shared"
 import { json } from "../lib/validate"
@@ -30,6 +30,7 @@ export const threadRoutes = new Hono<AppEnv>()
   .use(requireUser)
   .get("/", async (c) => {
     const user = c.get("user")
+    await ensureChief(user.id)
     const rows = await db
       .select()
       .from(threads)
