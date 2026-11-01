@@ -76,7 +76,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
         <D.Overlay className="fixed inset-0 z-50 bg-black/30 animate-fade-in" />
-        <D.Content className="fixed left-1/2 top-[14vh] z-50 w-[min(600px,calc(100vw-32px))] -translate-x-1/2 overflow-hidden rounded-xl border border-line bg-panel shadow-pop outline-none">
+        <D.Content className="no-drag fixed left-1/2 top-[14vh] z-50 w-[min(600px,calc(100vw-32px))] -translate-x-1/2 overflow-hidden rounded-xl border border-line bg-panel shadow-pop outline-none">
           <D.Title className="sr-only">Search</D.Title>
           <D.Description className="sr-only">Search conversations, bots and actions</D.Description>
           <Command shouldFilter={!results} loop>

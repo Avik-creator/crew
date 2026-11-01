@@ -23,10 +23,11 @@ export function DialogContent({
 }) {
   return (
     <D.Portal>
-      <D.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] animate-fade-in" />
+      {/* no-drag: window-drag strips under the dialog would otherwise eat its clicks */}
+      <D.Overlay className="no-drag fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] animate-fade-in" />
       <D.Content
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[min(560px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-line bg-panel shadow-pop outline-none animate-pop-in",
+          "no-drag fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[min(560px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border border-line bg-panel shadow-pop outline-none animate-pop-in",
           className,
         )}
       >

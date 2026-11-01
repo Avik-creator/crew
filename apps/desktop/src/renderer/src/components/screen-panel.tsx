@@ -122,8 +122,9 @@ function ScreenViewer({
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
-        <D.Overlay className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px] animate-fade-in" />
-        <D.Content className="fixed inset-6 z-50 flex flex-col rounded-2xl border border-line bg-panel p-3 shadow-pop outline-none animate-fade-in">
+        {/* no-drag: Electron's window-drag strips under the headers would otherwise eat clicks on the top of the dialog */}
+        <D.Overlay className="no-drag fixed inset-0 z-50 bg-black/55 backdrop-blur-[2px] animate-fade-in" />
+        <D.Content className="no-drag fixed inset-6 z-50 flex flex-col rounded-2xl border border-line bg-panel p-3 shadow-pop outline-none animate-fade-in">
           <div className="flex items-center justify-between gap-3 px-1 pb-3">
             <D.Title className="flex items-center gap-2 text-[14px] font-semibold">
               <BotAvatar bot={bot} size="sm" /> {bot.name}’s screen
