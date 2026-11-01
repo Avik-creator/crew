@@ -1,7 +1,7 @@
 // Files and toolchains the computer needs. Our E2B template bakes them in;
 // on a stock desktop image they're installed on first use, so either works.
 
-export const SCRIPTS_VERSION = "9"
+export const SCRIPTS_VERSION = "10"
 export const HOME = "/home/user"
 export const CREW_DIR = `${HOME}/.crew`
 export const WORKSPACE = `${HOME}/workspace`
@@ -48,7 +48,13 @@ def launch(n, url):
             time.sleep(0.2)
         load(n)
     elif url:
-        with_browser(n, lambda ctx: (lambda pg: (pg.goto(url, wait_until="commit"), pg.bring_to_front()))(ctx.new_page()))
+        # Open it in the tab in front, like typing in the address bar, so tabs don't pile up
+        def go(ctx):
+            pages = [p for p in ctx.pages if not p.url.startswith("devtools://")]
+            pg = active_page(ctx, n) if pages else ctx.new_page()
+            pg.goto(url, wait_until="commit")
+            pg.bring_to_front()
+        with_browser(n, go)
     print("ok")
 
 def with_browser(n, fn):
@@ -129,30 +135,39 @@ CONTROLS_JS = """() => {
   return { url: location.href, title: document.title, controls }
 }""" % VISIBLE_JS
 
-def active_page(ctx):
+# The tab in front. With no window manager every tab says it's visible and
+# focused, so ask Chrome: its tab list puts the most recently used tab first.
+def active_page(ctx, n):
     pages = [p for p in ctx.pages if not p.url.startswith("devtools://")]
     if not pages:
         raise RuntimeError("No page is open. Open one with openUrl first.")
-    for p in reversed(pages):
-        try:
-            if p.evaluate("document.visibilityState") == "visible": return p
-        except Exception:
-            pass
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{cdp_port(n)}/json/list", timeout=3) as r:
+            order = [t["id"] for t in json.load(r) if t.get("type") == "page"]
+        by_id = {}
+        for p in pages:
+            s = ctx.new_cdp_session(p)
+            by_id[s.send("Target.getTargetInfo")["targetInfo"]["targetId"]] = p
+            s.detach()
+        for tid in order:
+            if tid in by_id: return by_id[tid]
+    except Exception:
+        pass
     return pages[-1]
 
 def read(n, max_chars):
     if not running(n): raise RuntimeError("The browser isn't open. Open a page with openUrl first.")
-    print(json.dumps(with_browser(n, lambda ctx: active_page(ctx).evaluate(READ_JS, max_chars))))
+    print(json.dumps(with_browser(n, lambda ctx: active_page(ctx, n).evaluate(READ_JS, max_chars))))
 
 def controls(n):
     if not running(n): raise RuntimeError("The browser isn't open. Open a page with openUrl first.")
-    print(json.dumps(with_browser(n, lambda ctx: active_page(ctx).evaluate(CONTROLS_JS))))
+    print(json.dumps(with_browser(n, lambda ctx: active_page(ctx, n).evaluate(CONTROLS_JS))))
 
 def act(n, spec):
     a = json.loads(spec)
     if not running(n): raise RuntimeError("The browser isn't open. Open a page with openUrl first.")
     def go(ctx):
-        pg = active_page(ctx)
+        pg = active_page(ctx, n)
         t = a["type"]
         def target():
             loc = pg.locator('[data-crew-ref="%s"]' % a["ref"]).first
@@ -173,7 +188,7 @@ def act(n, spec):
         try: pg.wait_for_load_state("domcontentloaded", timeout=5000)
         except Exception: pass
         time.sleep(0.4)
-        now = active_page(ctx)
+        now = active_page(ctx, n)
         if len(ctx.pages) > before: now.bring_to_front()
         return {"url": now.url, "title": now.title(), "newTab": len(ctx.pages) > before}
     print(json.dumps(with_browser(n, go)))
