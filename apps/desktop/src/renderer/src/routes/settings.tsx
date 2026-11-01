@@ -103,6 +103,34 @@ function ThisMac() {
       <Row title="Accessibility" body="Needed for bots to use the mouse and keyboard.">
         {state.capabilities.input ? <Badge tone="ok">Allowed</Badge> : <Button size="sm" onClick={() => window.crew.device.openPrivacy("accessibility")}>Allow</Button>}
       </Row>
+      <Row
+        title="App control"
+        body={
+          state.capabilities.apps
+            ? "agent-desktop is installed. Bots read apps' buttons and fields directly instead of clicking on pixels."
+            : "Optional. Install agent-desktop so bots use apps through their buttons and fields, without moving your mouse."
+        }
+      >
+        {state.capabilities.apps ? (
+          <Badge tone="ok">Installed</Badge>
+        ) : (
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                void navigator.clipboard.writeText("npm i -g agent-desktop")
+                toast.success("Copied", { description: "Run it in Terminal, then come back here." })
+              }}
+            >
+              Copy install command
+            </Button>
+            <Button size="sm" onClick={refresh}>
+              Check again
+            </Button>
+          </>
+        )}
+      </Row>
       <div className="py-3">
         <div className="flex items-center justify-between">
           <div>

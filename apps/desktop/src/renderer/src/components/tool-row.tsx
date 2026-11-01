@@ -1,4 +1,5 @@
 import {
+  AppWindow,
   AtSign,
   Brain,
   Check,
@@ -12,6 +13,7 @@ import {
   Keyboard,
   MousePointerClick,
   Plug,
+  ScanSearch,
   Terminal,
   Users,
   X,
@@ -72,6 +74,22 @@ export function describeTool(name: string, input: Record<string, any> = {}): { i
       return { icon: <Globe />, text: <>Opened <span className="text-fg">{clip(input.url)}</span></> }
     case "openApp":
       return { icon: <Globe />, text: `Opened ${input.name}` }
+    case "listApps":
+      return { icon: <AppWindow />, text: "Checked which apps are open" }
+    case "readApp":
+      return { icon: <ScanSearch />, text: <>Read <span className="text-fg">{input.app ?? "an app"}</span>{input.surface ? ` (${input.surface})` : ""}</> }
+    case "useApp": {
+      const verb: Record<string, string> = {
+        click: "Clicked", "right-click": "Right-clicked", type: "Typed in", "set-value": "Filled in", select: "Picked", scroll: "Scrolled",
+        check: "Checked", uncheck: "Unchecked", toggle: "Toggled", expand: "Expanded", collapse: "Collapsed", focus: "Focused",
+        clear: "Cleared", "scroll-to": "Scrolled to", press: "Pressed",
+      }
+      const detail = input.action === "press" ? input.keys : input.action === "select" ? input.option : input.text
+      return {
+        icon: <MousePointerClick />,
+        text: <>{verb[input.action] ?? humanize(String(input.action ?? "Used"))} {detail ? <span className="text-fg">“{clip(detail, 40)}”</span> : <span className="font-mono text-faint">{clip(input.ref, 24)}</span>}</>,
+      }
+    }
     case "saveLogins":
       return { icon: <KeyRound />, text: "Saved browser logins for the team" }
     case "remember":
