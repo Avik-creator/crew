@@ -1,16 +1,27 @@
-import { ArrowUp, ImagePlus, Square, X } from "lucide-react"
-import { useEffect, useRef, useState, type KeyboardEvent } from "react"
+import { Extension } from "@tiptap/core"
+import Document from "@tiptap/extension-document"
+import HardBreak from "@tiptap/extension-hard-break"
+import Mention from "@tiptap/extension-mention"
+import Paragraph from "@tiptap/extension-paragraph"
+import Text from "@tiptap/extension-text"
+import { Placeholder, UndoRedo } from "@tiptap/extensions"
+import { EditorContent, useEditor } from "@tiptap/react"
+import { exitSuggestion, SuggestionPluginKey, type SuggestionProps } from "@tiptap/suggestion"
+import { ArrowUp, AtSign, Plus, Square, X } from "lucide-react"
+import { useEffect, useId, useRef, useState } from "react"
 
 import type { Bot } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-import { BotAvatar } from "./bot-avatar"
-import { Button } from "./ui/button"
+import { colorOf } from "./bot-avatar"
+import { MentionMenu, rankBots, type MentionMenuState } from "./mention-menu"
 import { Tip } from "./ui/misc"
 
 type Image = { mediaType: string; base64: string; preview: string }
 
 export type ComposerSend = { text: string; mentionBotIds: string[]; images: { mediaType: string; base64: string }[] }
+
+const MAX_IMAGES = 10
 
 const readImage = (file: File) =>
   new Promise<Image>((resolve, reject) => {
@@ -23,131 +34,219 @@ const readImage = (file: File) =>
     reader.readAsDataURL(file)
   })
 
+// The message box. "@" opens a list of bots; a picked bot becomes a chip that
+// sends as "@Name" text plus its id, so routing never guesses from the text.
 export function Composer({
-  members,
+  mentionable,
+  memberIds,
   placeholder,
   working,
   onSend,
   onStop,
   disabled,
 }: {
-  members: Bot[]
+  // Bots the person can @mention here
+  mentionable: Bot[]
+  // Bots already in this conversation; others are marked in the list
+  memberIds?: string[]
   placeholder: string
   working: boolean
   onSend: (msg: ComposerSend) => Promise<void> | void
   onStop?: () => void
   disabled?: boolean
 }) {
-  const [text, setText] = useState("")
   const [images, setImages] = useState<Image[]>([])
-  const [mention, setMention] = useState<{ query: string; index: number } | null>(null)
-  const ref = useRef<HTMLTextAreaElement>(null)
+  const [menu, setMenu] = useState<MentionMenuState | null>(null)
+  const [empty, setEmpty] = useState(true)
   const fileRef = useRef<HTMLInputElement>(null)
+  const menuId = useId()
 
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    el.style.height = "0px"
-    el.style.height = `${Math.min(el.scrollHeight, 220)}px`
-    el.style.overflowY = el.scrollHeight > 220 ? "auto" : "hidden"
-  }, [text])
+  // The editor is created once; these refs let its callbacks see fresh values
+  const live = useRef({ mentionable, memberIds, placeholder, menu, send: () => {}, addFiles: (_: File[]) => {} })
+  live.current.mentionable = mentionable
+  live.current.memberIds = memberIds
+  live.current.placeholder = placeholder
+  live.current.menu = menu
 
-  useEffect(() => ref.current?.focus(), [placeholder])
+  const editor = useEditor({
+    extensions: [
+      Document,
+      Paragraph,
+      Text,
+      HardBreak,
+      UndoRedo,
+      Placeholder.configure({ placeholder: () => live.current.placeholder }),
+      Mention.configure({
+        deleteTriggerWithBackspace: true,
+        renderText: ({ node }) => `@${node.attrs.label}`,
+        renderHTML: ({ node }) => {
+          const bot = live.current.mentionable.find((b) => b.id === node.attrs.id)
+          return ["span", { class: "mention", "data-id": node.attrs.id, style: `--mention: ${colorOf(bot).hex}` }, `@${node.attrs.label}`]
+        },
+        suggestion: {
+          char: "@",
+          items: ({ query }) => rankBots(live.current.mentionable, query, live.current.memberIds),
+          render: () => {
+            const toState = (p: SuggestionProps<Bot, { id: string; label: string }>, index: number): MentionMenuState => ({
+              items: p.items,
+              query: p.query,
+              index,
+              rect: p.clientRect?.() ?? null,
+              pick: (bot) => p.command({ id: bot.id, label: bot.name }),
+            })
+            return {
+              onStart: (p) => setMenu(toState(p, 0)),
+              onUpdate: (p) => setMenu((m) => toState(p, m && m.query === p.query ? Math.min(m.index, Math.max(p.items.length - 1, 0)) : 0)),
+              onExit: () => setMenu(null),
+              onKeyDown: ({ event, view }) => {
+                const m = live.current.menu
+                if (!m) return false
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                  if (!m.items.length) return true
+                  const d = event.key === "ArrowDown" ? 1 : -1
+                  setMenu({ ...m, index: (m.index + d + m.items.length) % m.items.length })
+                  return true
+                }
+                if (event.key === "Enter" || event.key === "Tab") {
+                  const bot = m.items[m.index]
+                  if (bot) m.pick(bot)
+                  return !!bot || event.key === "Tab"
+                }
+                if (event.key === "Escape") {
+                  exitSuggestion(view, SuggestionPluginKey)
+                  setMenu(null)
+                  return true
+                }
+                return false
+              },
+            }
+          },
+        },
+      }),
+      // Enter sends, Shift+Enter breaks the line. Runs after the mention list,
+      // which takes Enter first while it's open.
+      Extension.create({
+        name: "sendOnEnter",
+        addKeyboardShortcuts: () => ({
+          Enter: () => {
+            if (live.current.menu) return false
+            live.current.send()
+            return true
+          },
+          "Mod-Enter": () => {
+            live.current.send()
+            return true
+          },
+        }),
+      }),
+    ],
+    editorProps: {
+      attributes: {
+        class: "composer-input max-h-[200px] min-h-[22px] overflow-y-auto py-[7px] text-[14px] leading-[22px] outline-none selectable",
+        role: "textbox",
+        "aria-multiline": "true",
+        "aria-autocomplete": "list",
+      },
+      handlePaste: (_view, event) => {
+        const files = [...(event.clipboardData?.files ?? [])]
+        if (!files.length) return false
+        live.current.addFiles(files)
+        return true
+      },
+      handleDrop: (_view, event) => {
+        const files = [...(event.dataTransfer?.files ?? [])]
+        if (!files.length) return false
+        event.preventDefault()
+        live.current.addFiles(files)
+        return true
+      },
+    },
+    onUpdate: ({ editor }) => setEmpty(editor.isEmpty),
+  })
 
-  const matches = mention ? members.filter((m) => m.name.toLowerCase().startsWith(mention.query.toLowerCase())).slice(0, 6) : []
-
-  const updateMention = (value: string, caret: number) => {
-    const before = value.slice(0, caret)
-    const m = /(^|\s)@(\w*)$/.exec(before)
-    setMention(m && members.length > 1 ? { query: m[2] ?? "", index: 0 } : null)
-  }
-
-  const pick = (bot: Bot) => {
-    const el = ref.current
-    const caret = el?.selectionStart ?? text.length
-    const before = text.slice(0, caret).replace(/@(\w*)$/, `@${bot.name} `)
-    setText(before + text.slice(caret))
-    setMention(null)
-    requestAnimationFrame(() => {
-      el?.focus()
-      el?.setSelectionRange(before.length, before.length)
-    })
+  const addFiles = async (files: File[]) => {
+    const list = files.filter((f) => f.type.startsWith("image/")).slice(0, MAX_IMAGES - images.length)
+    const read = await Promise.all(list.map(readImage))
+    setImages((prev) => [...prev, ...read].slice(0, MAX_IMAGES))
   }
 
   const send = async () => {
-    const value = text.trim()
-    if (!value || disabled) return
-    const mentionBotIds = members.filter((m) => new RegExp(`@${m.name}\\b`, "i").test(value)).map((m) => m.id)
-    setText("")
+    if (!editor || disabled) return
+    const text = editor.getText({ blockSeparator: "\n" }).trim()
+    if (!text) return
+    const ids = new Set<string>()
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "mention" && node.attrs.id) ids.add(String(node.attrs.id))
+    })
+    const sent = images
+    editor.commands.clearContent(true)
     setImages([])
-    setMention(null)
-    await onSend({ text: value, mentionBotIds, images: images.map(({ mediaType, base64 }) => ({ mediaType, base64 })) })
+    await onSend({ text, mentionBotIds: [...ids], images: sent.map(({ mediaType, base64 }) => ({ mediaType, base64 })) })
   }
 
-  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (mention && matches.length) {
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault()
-        const d = e.key === "ArrowDown" ? 1 : -1
-        setMention({ ...mention, index: (mention.index + d + matches.length) % matches.length })
-        return
-      }
-      if (e.key === "Enter" || e.key === "Tab") {
-        e.preventDefault()
-        pick(matches[mention.index]!)
-        return
-      }
-      if (e.key === "Escape") return setMention(null)
+  live.current.send = () => void send()
+  live.current.addFiles = (files) => void addFiles(files)
+
+  useEffect(() => {
+    editor?.setEditable(!disabled)
+  }, [editor, disabled])
+
+  // A new conversation focuses the box and refreshes the placeholder
+  useEffect(() => {
+    if (!editor) return
+    editor.view.dispatch(editor.state.tr.setMeta("placeholder", placeholder))
+    editor.commands.focus("end")
+  }, [editor, placeholder])
+
+  // Tell assistive tech about the open list
+  useEffect(() => {
+    const dom = editor?.view.dom
+    if (!dom) return
+    dom.setAttribute("aria-label", placeholder)
+    dom.setAttribute("aria-expanded", String(!!menu))
+    if (menu) {
+      dom.setAttribute("aria-controls", menuId)
+      if (menu.items.length) dom.setAttribute("aria-activedescendant", `${menuId}-${menu.index}`)
+      else dom.removeAttribute("aria-activedescendant")
+    } else {
+      dom.removeAttribute("aria-controls")
+      dom.removeAttribute("aria-activedescendant")
     }
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault()
-      void send()
-    }
+  }, [editor, menu, menuId, placeholder])
+
+  // Types "@" at the caret, with a space first when it would touch a word
+  const startMention = () => {
+    if (!editor) return
+    const { from } = editor.state.selection
+    const before = editor.state.doc.textBetween(Math.max(0, from - 1), from, "\n", " ")
+    editor.chain().focus().insertContent(before && !/\s/.test(before) ? " @" : "@").run()
   }
 
-  const addFiles = async (files: FileList | File[]) => {
-    const list = [...files].filter((f) => f.type.startsWith("image/")).slice(0, 10 - images.length)
-    const read = await Promise.all(list.map(readImage))
-    setImages((prev) => [...prev, ...read])
-  }
+  const canSend = !empty && !disabled
 
   return (
-    <div className="relative px-4 pb-4 pt-1">
-      {mention && matches.length ? (
-        <div className="absolute bottom-full left-6 z-10 mb-1 w-64 rounded-lg border border-line bg-panel p-1 shadow-pop">
-          {matches.map((m, i) => (
-            <button
-              key={m.id}
-              onMouseDown={(e) => {
-                e.preventDefault()
-                pick(m)
-              }}
-              className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left", i === mention.index && "bg-hover")}
-            >
-              <BotAvatar bot={m} size="xs" />
-              <span className="text-[13px] font-medium">{m.name}</span>
-              <span className="truncate text-[11.5px] text-faint">{m.job}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
+    <div className="px-4 pb-4 pt-2">
+      {menu ? <MentionMenu state={menu} memberIds={memberIds} id={menuId} /> : null}
       <div
-        className="rounded-[22px] border border-line bg-raised/70 transition-colors focus-within:border-line-strong"
+        className={cn(
+          "rounded-[22px] border border-line bg-panel shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-colors focus-within:border-line-strong",
+          disabled && "opacity-60",
+        )}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault()
-          void addFiles(e.dataTransfer.files)
+          void addFiles([...e.dataTransfer.files])
         }}
       >
         {images.length ? (
-          <div className="flex gap-2 px-3 pt-3">
+          <div className="flex flex-wrap gap-2 px-3 pt-3">
             {images.map((img, i) => (
               <div key={i} className="group relative">
-                <img src={img.preview} alt="" className="size-14 rounded-lg border border-line object-cover" />
+                <img src={img.preview} alt={`Attached image ${i + 1}`} className="size-14 rounded-xl border border-line object-cover" />
                 <button
                   onClick={() => setImages(images.filter((_, j) => j !== i))}
-                  className="absolute -right-1.5 -top-1.5 hidden size-5 place-items-center rounded-full bg-fg text-bg group-hover:grid"
-                  aria-label="Remove image"
+                  className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-fg text-bg opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                  aria-label={`Remove image ${i + 1}`}
                 >
                   <X className="size-3" />
                 </button>
@@ -155,45 +254,58 @@ export function Composer({
             ))}
           </div>
         ) : null}
-        <div className="flex items-end gap-1 px-1.5 py-1.5">
-          <Tip label="Add image">
-            <button onClick={() => fileRef.current?.click()} className="grid size-8 shrink-0 place-items-center rounded-full text-faint hover:bg-hover hover:text-fg" aria-label="Add image">
-              <ImagePlus className="size-4" />
+        <div className="flex items-end gap-1 p-1.5">
+          <Tip label="Add images" side="top">
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={disabled || images.length >= MAX_IMAGES}
+              className="grid size-8 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-hover hover:text-fg disabled:opacity-40"
+              aria-label="Add images"
+            >
+              <Plus className="size-[18px]" />
             </button>
           </Tip>
-          <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && void addFiles(e.target.files)} />
-          <textarea
-            ref={ref}
-            rows={1}
-            value={text}
-            disabled={disabled}
-            placeholder={placeholder}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
             onChange={(e) => {
-              setText(e.target.value)
-              updateMention(e.target.value, e.target.selectionStart)
+              if (e.target.files) void addFiles([...e.target.files])
+              e.target.value = ""
             }}
-            onKeyDown={onKey}
-            onPaste={(e) => {
-              if (e.clipboardData.files.length) {
-                e.preventDefault()
-                void addFiles(e.clipboardData.files)
-              }
-            }}
-            className="block max-h-[160px] min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-[14px] outline-none placeholder:text-faint"
           />
-          {working && !text.trim() ? (
-            <Tip label="Stop">
-              <Button size="icon-sm" variant="secondary" onClick={onStop} className="rounded-full" aria-label="Stop">
-                <Square className="fill-current" />
-              </Button>
+          <EditorContent editor={editor} className="min-w-0 flex-1 px-1" />
+          {mentionable.length ? (
+            <Tip label="Mention a bot  @" side="top">
+              <button
+                onClick={startMention}
+                disabled={disabled}
+                className="grid size-8 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-hover hover:text-fg disabled:opacity-40"
+                aria-label="Mention a bot"
+              >
+                <AtSign className="size-4" />
+              </button>
+            </Tip>
+          ) : null}
+          {working && empty ? (
+            <Tip label="Stop" side="top">
+              <button onClick={onStop} className="grid size-8 shrink-0 place-items-center rounded-full bg-fg text-bg transition-opacity hover:opacity-85" aria-label="Stop">
+                <Square className="size-3 fill-current" />
+              </button>
             </Tip>
           ) : (
-            <Button size="icon-sm" variant="primary" onClick={() => void send()} disabled={!text.trim() || disabled} className="rounded-full" aria-label="Send">
-              <ArrowUp />
-            </Button>
+            <button
+              onClick={() => void send()}
+              disabled={!canSend}
+              className="grid size-8 shrink-0 place-items-center rounded-full bg-fg text-bg transition-opacity hover:opacity-85 disabled:bg-hover disabled:text-faint"
+              aria-label="Send"
+            >
+              <ArrowUp className="size-4" strokeWidth={2.4} />
+            </button>
           )}
         </div>
-        {members.length > 1 ? <p className="px-12 pb-2 text-[11.5px] text-faint">Type @ to pick who answers</p> : null}
       </div>
     </div>
   )

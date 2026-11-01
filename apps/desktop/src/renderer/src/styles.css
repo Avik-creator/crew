@@ -30,6 +30,7 @@
   --shadow-pop: 0 10px 28px -8px rgb(0 0 0 / 0.22), 0 0 0 0.5px var(--line-strong);
 
   --animate-pulse-soft: pulse-soft 1.6s ease-in-out infinite;
+  --animate-typing: typing 1.2s ease-in-out infinite;
   --animate-fade-in: fade-in 140ms ease-out;
   --animate-pop-in: pop-in 280ms cubic-bezier(0.2, 0, 0, 1);
   @keyframes fade-in {
@@ -41,6 +42,10 @@
   }
   @keyframes pulse-soft {
     50% { opacity: 0.35; }
+  }
+  @keyframes typing {
+    0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-2px); }
   }
 }
 
@@ -65,11 +70,11 @@
 }
 
 .dark {
-  --bg: #1c1c1e;
-  --panel: #2c2c2e;
+  --bg: #1e1e1f;
+  --panel: #262628;
   --sidebar: transparent;
-  --raised: #3a3a3c;
-  --hover: rgb(255 255 255 / 0.08);
+  --raised: #2f2f31;
+  --hover: rgb(255 255 255 / 0.07);
   --line: rgb(255 255 255 / 0.1);
   --line-strong: rgb(255 255 255 / 0.16);
   --fg: #f5f5f7;
@@ -91,7 +96,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .animate-pop-in,
-  .animate-pulse-soft { animation: none; }
+  .animate-pulse-soft,
+  .animate-typing { animation: none; }
 }
 
 html,
@@ -146,6 +152,7 @@ body {
 /* Fields draw their own focus state */
 input:focus-visible,
 textarea:focus-visible,
+.composer-input:focus-visible,
 [cmdk-input]:focus-visible {
   outline: none;
 }
@@ -163,12 +170,12 @@ textarea:focus-visible,
 .prose-chat pre {
   font-size: 12px;
 }
-.prose-chat a {
+.prose-chat a:not([data-mention]) {
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.prose-chat.bg-fg a {
+.prose-chat.bg-fg a:not([data-mention]) {
   color: inherit;
 }
 .prose-chat code:not(pre code) {
@@ -177,4 +184,39 @@ textarea:focus-visible,
   background: var(--raised);
   padding: 0.1em 0.35em;
   border-radius: 5px;
+}
+
+/* Your own bubbles are light on dark and dark on light; code inside follows */
+.bubble-mine code:not(pre code) {
+  background: color-mix(in srgb, var(--bg) 18%, transparent);
+}
+
+/* Mention chips inside your own bubble, which flips light and dark */
+.bubble-mine [data-mention] {
+  color: color-mix(in srgb, var(--chip) 65%, white);
+}
+.dark .bubble-mine [data-mention] {
+  color: color-mix(in srgb, var(--chip) 75%, black);
+}
+
+/* Composer (Tiptap) */
+.composer-input p {
+  margin: 0;
+}
+.composer-input p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--faint);
+  pointer-events: none;
+}
+
+/* A bot @mentioned in the composer */
+.mention {
+  color: var(--mention, var(--accent));
+  background: color-mix(in srgb, var(--mention, var(--accent)) 14%, transparent);
+  border-radius: 6px;
+  padding: 1px 4px;
+  font-weight: 500;
+  box-decoration-break: clone;
 }
