@@ -53,7 +53,7 @@ function createWindow() {
     trafficLightPosition: { x: 16, y: 18 },
     vibrancy: "sidebar",
     visualEffectState: "active",
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0c0c10" : "#fafafa",
+    backgroundColor: process.platform === "darwin" ? "#00000000" : nativeTheme.shouldUseDarkColors ? "#1c1c1e" : "#ffffff",
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),
       sandbox: true,

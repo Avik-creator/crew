@@ -42,7 +42,7 @@ export function HomeRoute() {
     <div className="h-full overflow-y-auto">
       <div className="drag h-[52px]" />
       <div className="mx-auto max-w-2xl px-8 pb-16 pt-6">
-        <h1 className="text-[24px] font-semibold tracking-tight">
+        <h1 className="text-[28px] font-semibold tracking-[-0.02em]">
           {greeting}
           {me.data ? `, ${me.data.user.name.split(" ")[0]}` : ""}
         </h1>
@@ -73,7 +73,7 @@ export function HomeRoute() {
           </div>
         ) : null}
 
-        <h2 className="mb-3 mt-10 text-[12px] font-medium uppercase tracking-wider text-faint">Get set up</h2>
+        <h2 className="mb-3 mt-10 text-[13px] font-semibold tracking-[-0.01em]">Get set up</h2>
         <div className="space-y-2">
           <Step
             done={botList.length > 0}

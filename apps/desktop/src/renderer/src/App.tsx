@@ -111,7 +111,7 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <TipProvider>
         {state === "loading" ? (
-          <div className="grid h-full place-items-center">
+          <div className="grid h-full place-items-center bg-bg">
             <Spinner className="text-faint" />
           </div>
         ) : state === "signed-out" ? (

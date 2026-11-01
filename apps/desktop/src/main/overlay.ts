@@ -7,11 +7,10 @@ let hideTimer: NodeJS.Timeout | undefined
 
 const page = (botName: string) => `<!doctype html><html><head><meta charset="utf-8"><style>
 html,body{margin:0;height:100%;background:transparent;overflow:hidden;font:600 12px -apple-system,system-ui,sans-serif}
-.frame{position:fixed;inset:0;border:3px solid rgba(139,92,246,.9);border-radius:10px;box-shadow:inset 0 0 24px rgba(139,92,246,.35)}
-.pill{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(17,17,23,.92);color:#ececf1;padding:6px 12px;border-radius:999px;display:flex;gap:8px;align-items:center;border:1px solid rgba(139,92,246,.6)}
-.dot{width:7px;height:7px;border-radius:50%;background:#a78bfa;animation:p 1.2s infinite}
-kbd{font:inherit;background:#2a2a35;padding:1px 6px;border-radius:5px}
-@keyframes p{50%{opacity:.3}}
+.frame{position:fixed;inset:0;border:2px solid rgba(10,132,255,.9);border-radius:10px}
+.pill{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(28,28,30,.92);color:#f5f5f7;padding:6px 12px;border-radius:999px;display:flex;gap:8px;align-items:center}
+.dot{width:7px;height:7px;border-radius:50%;background:#0a84ff}
+kbd{font:inherit;background:#3a3a3c;padding:1px 6px;border-radius:5px}
 </style></head><body><div class="frame"></div><div class="pill"><span class="dot"></span>${botName.replace(/[<>&]/g, "")} is using your Mac · <kbd>⌘⇧Esc</kbd> to stop</div></body></html>`
 
 export function showOverlay(botName: string) {

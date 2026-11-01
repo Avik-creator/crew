@@ -34,16 +34,12 @@ export function AuthRoute({ onSignedIn }: { onSignedIn: () => void }) {
 
   return (
     <div className="drag grid h-full place-items-center bg-bg">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute left-1/2 top-[-20%] h-[60vh] w-[80vw] -translate-x-1/2 rounded-full bg-accent/10 blur-3xl" />
-      </div>
-      <form onSubmit={submit} className="no-drag relative w-[360px]">
-        <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 grid size-12 place-items-center rounded-2xl bg-accent text-[20px] font-bold text-accent-fg shadow-lg shadow-accent/30">C</div>
-          <h1 className="text-[22px] font-semibold tracking-tight">{mode === "in" ? "Welcome back" : "Create your Crew"}</h1>
-          <p className="mt-1 text-[13px] text-muted">AI teammates with their own computer.</p>
+      <form onSubmit={submit} className="no-drag relative w-[320px]">
+        <div className="mb-7 text-center">
+          <h1 className="text-[28px] font-semibold tracking-[-0.02em]">Crew</h1>
+          <p className="mt-1 text-[13px] text-muted">{mode === "in" ? "Sign in to your crew." : "Create an account."}</p>
         </div>
-        <div className="space-y-3 rounded-2xl border border-line bg-panel p-5 shadow-sm">
+        <div className="space-y-3">
           {mode === "up" ? (
             <Field label="Your name">
               <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Alex" required />
