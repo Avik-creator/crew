@@ -1,4 +1,4 @@
-import { Brain, CalendarClock, ChevronDown, Inbox, LogOut, Plug, Plus, Search, Settings, Users } from "lucide-react"
+import { Brain, CalendarClock, ChevronDown, Inbox, LogOut, Plug, Plus, Search, Settings } from "lucide-react"
 import { useState, type ReactNode } from "react"
 import { Link, useLocation } from "wouter"
 
@@ -7,7 +7,7 @@ import type { Thread } from "@/lib/types"
 import { useUI } from "@/lib/ui"
 import { cn, shortTime } from "@/lib/utils"
 
-import { AvatarStack, BotAvatar } from "./bot-avatar"
+import { AvatarStack, BotAvatar, GroupAvatar } from "./bot-avatar"
 import { Kbd, Tip } from "./ui/misc"
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "./ui/menu"
 
@@ -29,6 +29,16 @@ function NavItem({ href, icon, label, count }: { href: string; icon: ReactNode; 
   )
 }
 
+// Previews are stored as the raw message; drop Markdown marks so they read cleanly
+const plainPreview = (text: string) =>
+  text
+    .replace(/```[\s\S]*?(```|$)/g, " ")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\*\*|__|~~|`/g, "")
+    .replace(/(^|\n)\s*([#>]+|[-*] )\s*/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim()
+
 function ThreadItem({ thread, label, avatar }: { thread: Thread; label: string; avatar: ReactNode }) {
   const [location] = useLocation()
   const active = location === `/t/${thread.id}`
@@ -48,7 +58,7 @@ function ThreadItem({ thread, label, avatar }: { thread: Thread; label: string; 
           {thread.lastMessageAt ? <span className="shrink-0 text-[11px] text-faint">{shortTime(thread.lastMessageAt)}</span> : null}
         </span>
         <span className="mt-0.5 flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-[12px] text-faint">{thread.lastMessagePreview || (working ? "Working" : "")}</span>
+          <span className="min-w-0 flex-1 truncate text-[12px] text-faint">{plainPreview(thread.lastMessagePreview) || (working ? "Working" : "")}</span>
           {working ? <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="Working" /> : thread.unread && !active ? <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="Unread" /> : null}
         </span>
       </span>
@@ -152,11 +162,7 @@ export function Sidebar({ onSignOut }: { onSignOut: () => void }) {
               key={t.id}
               thread={t}
               label={t.name ?? "Group"}
-              avatar={
-                <span className="grid size-6 place-items-center rounded-full bg-raised text-muted">
-                  <Users className="size-3.5" />
-                </span>
-              }
+              avatar={<GroupAvatar bots={t.botIds.map((id) => byId.get(id))} size="md" />}
             />
           ))}
           {!groups.length ? <p className="px-2.5 py-1 text-[12px] text-faint">Bots work together in groups.</p> : null}
