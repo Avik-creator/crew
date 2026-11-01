@@ -1,4 +1,4 @@
-import type { ComputerDriver, DesktopAction } from "./driver"
+import type { BrowserControl, ComputerDriver, DesktopAction } from "./driver"
 
 // Defers getting a driver until a tool actually needs one, so a chat turn that
 // never touches the screen never starts or resumes the computer
@@ -6,14 +6,22 @@ export class LazyDriver implements ComputerDriver {
   private driver?: Promise<ComputerDriver>
   openApp?: (name: string) => Promise<string>
   saveLogins?: () => Promise<string[]>
+  browser?: BrowserControl
 
   constructor(
     readonly kind: "cloud" | "device",
     private factory: () => Promise<ComputerDriver>,
-    features: { openApp?: boolean; saveLogins?: boolean } = {},
+    features: { openApp?: boolean; saveLogins?: boolean; browser?: boolean } = {},
   ) {
     if (features.openApp) this.openApp = async (name) => (await this.get()).openApp!(name)
     if (features.saveLogins) this.saveLogins = async () => (await this.get()).saveLogins!()
+    if (features.browser) {
+      this.browser = {
+        read: async (maxChars) => (await this.get()).browser!.read(maxChars),
+        controls: async () => (await this.get()).browser!.controls(),
+        act: async (action) => (await this.get()).browser!.act(action),
+      }
+    }
   }
 
   private get() {

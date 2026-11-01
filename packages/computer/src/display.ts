@@ -1,8 +1,8 @@
 import { CLOUD_SCREEN, type ScreenshotPayload } from "@crew/shared"
 
-import type { ComputerDriver, DesktopAction } from "./driver"
+import type { BrowserControl, ComputerDriver, DesktopAction, PageAction } from "./driver"
 import type { ComputerHandle } from "./provider"
-import { CREW_DIR, WORKSPACE } from "./scripts"
+import { CREW_DIR, TOOLCHAINS, WORKSPACE } from "./scripts"
 
 const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 
@@ -45,6 +45,22 @@ export class CloudDisplayDriver implements ComputerDriver {
     private computer: ComputerHandle,
     private display: number,
   ) {}
+
+  readonly browser: BrowserControl = {
+    read: (maxChars = 20_000) => this.page("read", String(maxChars)),
+    controls: () => this.page("controls"),
+    act: (action: PageAction) => this.page("act", JSON.stringify(action)),
+  }
+
+  // Runs one browser.py command against this bot's Chrome and parses its JSON
+  private async page(command: string, arg?: string): Promise<unknown> {
+    const r = await this.computer.exec(
+      `(${TOOLCHAINS.playwright}) >/dev/null 2>&1; python3 ${CREW_DIR}/browser.py ${command} ${this.display}${arg === undefined ? "" : ` ${q(arg)}`}`,
+      { timeoutMs: 60_000 },
+    )
+    if (r.exitCode !== 0) throw new Error(r.stderr.trim().split("\n").pop() || "The browser didn't answer")
+    return JSON.parse(r.stdout.trim().split("\n").pop() || "null")
+  }
 
   private get env() {
     return `export DISPLAY=:${this.display};`

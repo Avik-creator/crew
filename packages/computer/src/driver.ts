@@ -22,6 +22,25 @@ export interface AppControl {
   act(action: AppAction): Promise<unknown>
 }
 
+// One step on the open web page, aimed at a ref from the latest pageControls
+export type PageAction =
+  | { type: "click"; ref: string }
+  | { type: "fill"; ref: string; text: string; submit?: boolean }
+  | { type: "select"; ref: string; option: string }
+  | { type: "press"; key: string }
+  | { type: "goto"; url: string }
+  | { type: "back" }
+  | { type: "scroll"; direction: "up" | "down" }
+
+// The browser on the computer, used through the page's DOM: exact text and
+// link URLs, and controls by ref. Faster and more exact than screenshots for
+// anything on the web.
+export interface BrowserControl {
+  read(maxChars?: number): Promise<unknown>
+  controls(): Promise<unknown>
+  act(action: PageAction): Promise<unknown>
+}
+
 // What every computer tool talks to, whether the bot works on the shared cloud
 // computer (CloudDisplayDriver) or on the person's own Mac (DeviceDriver).
 export interface ComputerDriver {
@@ -38,4 +57,6 @@ export interface ComputerDriver {
   saveLogins?(): Promise<string[]>
   // Present when the computer can read apps' accessibility trees
   apps?: AppControl
+  // Present when the bot's browser can be used through the DOM
+  browser?: BrowserControl
 }
