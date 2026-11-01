@@ -17,6 +17,11 @@ function handle(event: AppEvent) {
       invalidate(keys.threads)
       invalidate(keys.messages(event.threadId))
       return
+    case "team.updated":
+      invalidate(keys.bots)
+      invalidate(keys.threads)
+      invalidate(keys.schedules)
+      return
     case "run.started":
       liveRuns.add(event.threadId, { botId: event.botId, triggerRunId: event.triggerRunId })
       invalidate(keys.threads)

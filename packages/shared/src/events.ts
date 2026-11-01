@@ -2,6 +2,8 @@
 // what changed without polling. Payloads stay small: the app refetches details.
 export type AppEvent =
   | { type: "thread.updated"; threadId: string }
+  // Bots or groups were added, changed or removed (e.g. by the chief)
+  | { type: "team.updated" }
   | { type: "message.created"; threadId: string; messageId: string; botId?: string | null }
   | {
       type: "run.started"
