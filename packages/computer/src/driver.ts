@@ -1,6 +1,8 @@
-import type { ScreenshotPayload } from "@crew/shared"
+import type { AppAction, AppSnapshotOptions, ScreenshotPayload } from "@crew/shared"
 
 import type { ExecResult, FileEntry } from "./provider"
+
+export type { AppAction, AppSnapshotOptions }
 
 export type MouseButton = "left" | "right" | "middle"
 
@@ -11,6 +13,14 @@ export type DesktopAction =
   | { type: "scroll"; x: number; y: number; direction: "up" | "down" | "left" | "right"; amount?: number }
   | { type: "type"; text: string }
   | { type: "key"; keys: string }
+
+// Reads and operates apps through the OS accessibility tree: elements come
+// back with refs, so actions don't depend on pixel positions
+export interface AppControl {
+  listApps(): Promise<unknown>
+  snapshot(opts: AppSnapshotOptions): Promise<unknown>
+  act(action: AppAction): Promise<unknown>
+}
 
 // What every computer tool talks to, whether the bot works on the shared cloud
 // computer (CloudDisplayDriver) or on the person's own Mac (DeviceDriver).
@@ -26,4 +36,6 @@ export interface ComputerDriver {
   openUrl(url: string): Promise<string>
   openApp?(name: string): Promise<string>
   saveLogins?(): Promise<string[]>
+  // Present when the computer can read apps' accessibility trees
+  apps?: AppControl
 }

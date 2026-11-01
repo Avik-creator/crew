@@ -1,7 +1,7 @@
 import type { LocalToolName, ScreenshotPayload } from "@crew/shared"
 import { internalFetch } from "@crew/shared/node"
 
-import type { ComputerDriver, DesktopAction } from "./driver"
+import type { AppAction, AppControl, AppSnapshotOptions, ComputerDriver, DesktopAction } from "./driver"
 import type { ExecResult, FileEntry } from "./provider"
 
 export type DeviceRunContext = { runId: string; botId: string; botName: string; background: boolean }
@@ -19,11 +19,21 @@ const ACTION_TOOL: Record<DesktopAction["type"], LocalToolName> = {
 // the Mac enforces its own limits (allowed folders, kill switch, overlay).
 export class DeviceDriver implements ComputerDriver {
   readonly kind = "device" as const
+  readonly apps?: AppControl
 
   constructor(
     private deviceId: string,
     private ctx: DeviceRunContext,
-  ) {}
+    features: { apps?: boolean } = {},
+  ) {
+    if (features.apps) {
+      this.apps = {
+        listApps: () => this.invoke("listApps", {}),
+        snapshot: (opts: AppSnapshotOptions) => this.invoke("readApp", opts),
+        act: (action: AppAction) => this.invoke("useApp", action),
+      }
+    }
+  }
 
   private async invoke<T>(tool: LocalToolName, input: Record<string, unknown>): Promise<T> {
     const res = await internalFetch(`/internal/devices/${this.deviceId}/invoke`, {
