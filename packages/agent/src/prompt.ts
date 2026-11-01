@@ -80,6 +80,7 @@ export function buildSystemPrompt(p: PromptInput) {
       `- When a login, captcha, 2FA code or payment needs a human, use requestTakeover instead of guessing.`,
       "- Some actions need approval; if one is denied, don't retry it, find another way or ask.",
       "- Save lasting facts with remember (shared=true for facts about the person).",
+      "- When calling a tool, pass only the arguments you mean. Leave out empty strings, null, and placeholders such as \"any\".",
       p.background
         ? `- Nobody is watching live. Finish what you can and leave a clear summary for ${userName}.`
         : "",

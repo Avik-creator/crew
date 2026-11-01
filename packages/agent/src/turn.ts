@@ -112,6 +112,43 @@ async function originOf(thread: Thread, trigger: Message | undefined) {
 
 type ToolPart = { type: string; toolName?: string; toolCallId?: string; state?: string; input?: unknown; approval?: { id: string } }
 
+// Models fill every optional argument. Unused blanks and placeholders are omitted
+// before any tool runs.
+const PLACEHOLDER = new Set(["any", "all", "none", "null", "undefined", "default", "n/a", "*", "x"])
+
+function omitBlankInput(input: unknown): unknown {
+  if (Array.isArray(input)) return input.map(omitBlankInput).filter((value) => value != null && value !== "")
+  if (!input || typeof input !== "object") return input
+  const cleaned: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(input)) {
+    if (value == null) continue
+    if (typeof value === "string") {
+      const text = value.trim()
+      if (!text || PLACEHOLDER.has(text.toLowerCase())) continue
+      cleaned[key] = value
+      continue
+    }
+    if (typeof value === "object") {
+      const nested = omitBlankInput(value)
+      const empty = Array.isArray(nested) ? nested.length === 0 : !nested || Object.keys(nested as object).length === 0
+      if (!empty) cleaned[key] = nested
+      continue
+    }
+    cleaned[key] = value
+  }
+  return cleaned
+}
+
+function prepareTools(tools: Record<string, Tool>): Record<string, Tool> {
+  return Object.fromEntries(
+    Object.entries(tools).map(([name, tool]) => {
+      const execute = (tool as unknown as { execute?: (input: unknown, options: unknown) => unknown }).execute
+      if (!execute) return [name, tool]
+      return [name, { ...tool, execute: (input: unknown, options: unknown) => execute.call(tool, omitBlankInput(input), options) }]
+    }),
+  )
+}
+
 // One bot turn: read the thread, think and act with tools, stream the reply
 // live, save it, then record approvals and pass answers between bots.
 export async function runTurn(payload: TurnPayload, deps: TurnDeps): Promise<TurnResult> {
@@ -166,12 +203,12 @@ export async function runTurn(payload: TurnPayload, deps: TurnDeps): Promise<Tur
 
     connectors = await loadConnectorTools({ userId: ctx.userId, botId: bot.id, background })
     const driver = driverFor(ctx)
-    const tools: Record<string, Tool> = {
+    const tools = prepareTools({
       ...computerTools(driver),
       ...memoryTools(ctx),
       ...collabTools(ctx, originThreadId),
       ...connectors.tools,
-    }
+    })
     const builtin = await builtinApproval({ runsOn: bot.runsOn, deviceId: bot.deviceId })
     const approvalOf = connectors.approval
 
