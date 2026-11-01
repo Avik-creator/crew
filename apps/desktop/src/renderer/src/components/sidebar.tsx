@@ -5,7 +5,7 @@ import { Link, useLocation } from "wouter"
 import { useApprovals, useBots, useMe, useTakeovers, useThreads } from "@/lib/queries"
 import type { Thread } from "@/lib/types"
 import { useUI } from "@/lib/ui"
-import { cn } from "@/lib/utils"
+import { cn, shortTime } from "@/lib/utils"
 
 import { AvatarStack, BotAvatar } from "./bot-avatar"
 import { Kbd, Tip } from "./ui/misc"
@@ -37,21 +37,21 @@ function ThreadItem({ thread, label, avatar }: { thread: Thread; label: string; 
     <Link
       href={`/t/${thread.id}`}
       className={cn(
-        "group flex h-9 items-center gap-2.5 rounded-lg px-2 transition-colors",
-        active ? "bg-hover text-fg" : "text-muted hover:bg-hover/70 hover:text-fg",
+        "flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition-colors",
+        active ? "bg-fg/8 text-fg" : "text-muted hover:bg-fg/5 hover:text-fg",
       )}
     >
       {avatar}
-      <span className={cn("min-w-0 flex-1 truncate text-[13px]", (thread.unread || active) && "font-medium text-fg")}>{label}</span>
-      {working ? (
-        <span className="flex gap-0.5" aria-label="working">
-          {[0, 1, 2].map((i) => (
-            <span key={i} className="size-1 rounded-full bg-accent animate-pulse-soft" style={{ animationDelay: `${i * 0.2}s` }} />
-          ))}
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline gap-2">
+          <span className={cn("min-w-0 flex-1 truncate text-[13px]", (thread.unread || active) && "font-medium text-fg")}>{label}</span>
+          {thread.lastMessageAt ? <span className="shrink-0 text-[11px] text-faint">{shortTime(thread.lastMessageAt)}</span> : null}
         </span>
-      ) : thread.unread && !active ? (
-        <span className="size-2 rounded-full bg-accent" />
-      ) : null}
+        <span className="mt-0.5 flex items-center gap-1.5">
+          <span className="min-w-0 flex-1 truncate text-[12px] text-faint">{thread.lastMessagePreview || (working ? "Working" : "")}</span>
+          {working ? <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="Working" /> : thread.unread && !active ? <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="Unread" /> : null}
+        </span>
+      </span>
     </Link>
   )
 }
@@ -61,7 +61,7 @@ function Group({ title, action, children, defaultOpen = true }: { title: string;
   return (
     <div className="mt-4">
       <div className="group/h flex h-6 items-center justify-between px-2.5">
-        <button onClick={() => setOpen(!open)} className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wider text-faint hover:text-muted">
+        <button onClick={() => setOpen(!open)} className="flex items-center gap-1 text-[11px] font-medium tracking-[0.04em] text-faint uppercase hover:text-muted">
           {title}
           <ChevronDown className={cn("size-3 transition-transform", !open && "-rotate-90")} />
         </button>
@@ -88,12 +88,12 @@ export function Sidebar({ onSignOut }: { onSignOut: () => void }) {
   const inboxCount = (approvals.data?.length ?? 0) + (takeovers.data?.length ?? 0)
 
   return (
-    <aside className="flex h-full w-[248px] shrink-0 flex-col border-r border-line bg-panel/60">
+    <aside className="flex h-full w-[272px] shrink-0 flex-col border-r border-line bg-sidebar">
       <div className="drag h-[52px] shrink-0" />
       <div className="px-3">
         <button
           onClick={ui.openPalette}
-          className="flex h-8 w-full items-center gap-2 rounded-lg border border-line bg-bg/60 px-2.5 text-[13px] text-faint transition-colors hover:text-muted"
+          className="flex h-7 w-full items-center gap-2 rounded-md bg-fg/5 px-2 text-[13px] text-faint transition-colors hover:bg-fg/8 hover:text-muted"
         >
           <Search className="size-3.5" />
           <span className="flex-1 text-left">Search</span>
@@ -123,7 +123,7 @@ export function Sidebar({ onSignOut }: { onSignOut: () => void }) {
                 key={t.id}
                 thread={t}
                 label={bot.name}
-                avatar={<BotAvatar bot={bot} size="sm" working={t.working.length > 0} className={bot.status === "paused" ? "opacity-50" : ""} />}
+                avatar={<BotAvatar bot={bot} size="md" working={t.working.length > 0} className={bot.status === "paused" ? "opacity-50" : ""} />}
               />
             )
           })}

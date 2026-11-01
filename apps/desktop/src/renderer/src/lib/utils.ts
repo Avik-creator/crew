@@ -12,6 +12,13 @@ export function shortTime(date: string | Date) {
   return format(d, "MMM d")
 }
 
+export function chatStamp(date: string | Date) {
+  const d = typeof date === "string" ? new Date(date) : date
+  if (isToday(d)) return format(d, "h:mm a")
+  if (isYesterday(d)) return `Yesterday ${format(d, "h:mm a")}`
+  return format(d, "MMM d, h:mm a")
+}
+
 export const ago = (date: string | Date) => formatDistanceToNowStrict(typeof date === "string" ? new Date(date) : date, { addSuffix: true })
 
 export const errorMessage = (err: unknown) => (err instanceof Error ? err.message : "Something went wrong")

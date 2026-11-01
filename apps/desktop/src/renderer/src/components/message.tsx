@@ -1,11 +1,11 @@
 import type { UIMessage } from "ai"
-import { AtSign, CalendarClock, ChevronRight, Sparkles, TriangleAlert } from "lucide-react"
+import { AtSign, CalendarClock, ChevronRight, TriangleAlert } from "lucide-react"
 import { memo, useState } from "react"
 import { Streamdown } from "streamdown"
 import { Link } from "wouter"
 
 import type { Approval, Bot } from "@/lib/types"
-import { cn, shortTime } from "@/lib/utils"
+import { chatStamp, cn } from "@/lib/utils"
 
 import { BotAvatar } from "./bot-avatar"
 import { ApprovalCard } from "./inbox-cards"
@@ -31,7 +31,6 @@ function Reasoning({ text, streaming }: { text: string; streaming?: boolean }) {
   return (
     <div className="my-1">
       <button onClick={() => setOpen(!open)} className="flex items-center gap-1.5 text-[12.5px] text-faint hover:text-muted">
-        <Sparkles className={cn("size-3.5", streaming && "animate-pulse-soft")} />
         {streaming ? "Thinking…" : "Thought it through"}
         <ChevronRight className={cn("size-3 transition-transform", open && "rotate-90")} />
       </button>
@@ -66,7 +65,6 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
     )
   }
 
-  const name = author.kind === "user" ? author.name : (author.bot?.name ?? "Bot")
   const lastIndex = parts.length - 1
   const inProgress = streaming && parts.some((part) => {
     if (part.type === "text") return part.state === "streaming" && part.text.length > 0
@@ -78,65 +76,62 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
     return false
   })
 
+  const mine = author.kind === "user"
+  const fromBot = author.kind === "bot"
+
   return (
-    <div className={cn("group flex gap-3 px-6", grouped ? "pt-0.5" : "pt-4")}>
-      <div className="w-8 shrink-0">
-        {grouped ? null : author.kind === "bot" ? (
-          <BotAvatar bot={author.bot} size="md" working={streaming} />
-        ) : (
-          <span className="grid size-8 place-items-center rounded-full bg-fg text-[12px] font-semibold text-bg">{name.slice(0, 1).toUpperCase()}</span>
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        {grouped ? null : (
-          <div className="flex items-baseline gap-2">
-            <span className="text-[13px] font-semibold">{name}</span>
-            {author.kind === "bot" && author.bot ? <span className="text-[11.5px] text-faint">{author.bot.job}</span> : null}
-            {meta.via === "bot_message" ? (
-              <Link href={meta.botThreadId ? `/t/${meta.botThreadId}` : "#"} className="flex items-center gap-0.5 text-[11.5px] text-accent hover:underline">
-                <AtSign className="size-3" /> replied by message
-              </Link>
-            ) : null}
-            {createdAt ? <span className="text-[11px] text-faint opacity-0 transition-opacity group-hover:opacity-100">{shortTime(createdAt)}</span> : null}
+    <>
+      {!grouped && createdAt ? <p className="mt-5 text-center text-[11px] text-faint">{chatStamp(createdAt)}</p> : null}
+      <div className={cn("flex px-5", mine ? "justify-end" : "justify-start", grouped ? "mt-1" : "mt-2")}>
+        {fromBot ? (
+          <div className="mr-2 w-7 shrink-0">
+            {grouped ? null : <BotAvatar bot={author.bot} size="sm" working={streaming} />}
           </div>
-        )}
-        <div className="selectable">
-          {parts.map((part, i) => {
-            if (part.type === "text") {
-              if (!part.text) return null
-              return (
-                <div key={i} className="prose-chat">
-                  <Streamdown isAnimating={streaming && i === lastIndex} mode={streaming ? "streaming" : "static"}>
-                    {part.text}
-                  </Streamdown>
-                </div>
-              )
-            }
-            if (part.type === "reasoning") {
-              if (!part.text.trim()) return null
-              return <Reasoning key={i} text={part.text} streaming={streaming && i === lastIndex} />
-            }
-            if (part.type === "file" && part.mediaType.startsWith("image/")) {
-              return <img key={i} src={part.url} alt="" className="my-2 max-h-72 rounded-lg border border-line" />
-            }
-            if (part.type === "dynamic-tool" || part.type.startsWith("tool-")) {
-              const tp = part as unknown as ToolPart
-              const pending = tp.state === "approval-requested" ? approvals?.find((a) => a.toolCallId === tp.approval?.id) : undefined
-              return (
-                <ToolRow key={tp.toolCallId ?? i} part={tp}>
-                  {pending ? <ApprovalCard approval={pending} compact /> : null}
-                </ToolRow>
-              )
-            }
-            return null
-          })}
-          {streaming && !inProgress ? (
-            <p className="mt-1 flex items-center gap-2 text-[12.5px] text-faint">
-              <Spinner className="size-3.5" /> Working…
-            </p>
+        ) : null}
+        <div className={cn("flex min-w-0 max-w-[min(34rem,88%)] flex-col", mine ? "items-end" : "items-start")}>
+          {meta.via === "bot_message" ? (
+            <Link href={meta.botThreadId ? `/t/${meta.botThreadId}` : "#"} className="mb-1 flex items-center gap-0.5 text-[11.5px] text-accent hover:underline">
+              <AtSign className="size-3" /> replied by message
+            </Link>
           ) : null}
+          <div className="selectable flex w-full flex-col gap-1.5">
+            {parts.map((part, i) => {
+              if (part.type === "text") {
+                if (!part.text) return null
+                return (
+                  <div key={i} className={cn("prose-chat max-w-full rounded-[18px] px-3.5 py-2", mine ? "bg-fg text-bg" : "bg-raised text-fg")}>
+                    <Streamdown isAnimating={streaming && i === lastIndex} mode={streaming ? "streaming" : "static"}>
+                      {part.text}
+                    </Streamdown>
+                  </div>
+                )
+              }
+              if (part.type === "reasoning") {
+                if (!part.text.trim()) return null
+                return <Reasoning key={i} text={part.text} streaming={streaming && i === lastIndex} />
+              }
+              if (part.type === "file" && part.mediaType.startsWith("image/")) {
+                return <img key={i} src={part.url} alt="" className="max-h-72 rounded-[18px] border border-line" />
+              }
+              if (part.type === "dynamic-tool" || part.type.startsWith("tool-")) {
+                const tp = part as unknown as ToolPart
+                const pending = tp.state === "approval-requested" ? approvals?.find((a) => a.toolCallId === tp.approval?.id) : undefined
+                return (
+                  <ToolRow key={tp.toolCallId ?? i} part={tp}>
+                    {pending ? <ApprovalCard approval={pending} compact /> : null}
+                  </ToolRow>
+                )
+              }
+              return null
+            })}
+            {streaming && !inProgress ? (
+              <p className="flex items-center gap-2 px-1 text-[12.5px] text-faint">
+                <Spinner className="size-3.5" /> Working…
+              </p>
+            ) : null}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   )
 })

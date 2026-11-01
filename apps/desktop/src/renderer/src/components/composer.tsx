@@ -112,7 +112,7 @@ export function Composer({
   }
 
   return (
-    <div className="relative px-6 pb-5 pt-2">
+    <div className="relative px-4 pb-4 pt-1">
       {mention && matches.length ? (
         <div className="absolute bottom-full left-6 z-10 mb-1 w-64 rounded-lg border border-line bg-panel p-1 shadow-pop">
           {matches.map((m, i) => (
@@ -132,7 +132,7 @@ export function Composer({
         </div>
       ) : null}
       <div
-        className="rounded-2xl border border-line bg-panel shadow-sm transition-colors focus-within:border-line-strong"
+        className="rounded-[22px] border border-line bg-raised/70 transition-colors focus-within:border-line-strong"
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault()
@@ -155,35 +155,32 @@ export function Composer({
             ))}
           </div>
         ) : null}
-        <textarea
-          ref={ref}
-          rows={1}
-          value={text}
-          disabled={disabled}
-          placeholder={placeholder}
-          onChange={(e) => {
-            setText(e.target.value)
-            updateMention(e.target.value, e.target.selectionStart)
-          }}
-          onKeyDown={onKey}
-          onPaste={(e) => {
-            if (e.clipboardData.files.length) {
-              e.preventDefault()
-              void addFiles(e.clipboardData.files)
-            }
-          }}
-          className="block max-h-[220px] w-full resize-none bg-transparent px-4 pb-1 pt-3 text-[13.5px] outline-none placeholder:text-faint"
-        />
-        <div className="flex items-center justify-between px-2 pb-2">
-          <div className="flex items-center gap-0.5">
-            <Tip label="Add image">
-              <button onClick={() => fileRef.current?.click()} className="rounded-lg p-1.5 text-faint hover:bg-hover hover:text-fg" aria-label="Add image">
-                <ImagePlus className="size-4" />
-              </button>
-            </Tip>
-            <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && void addFiles(e.target.files)} />
-            {members.length > 1 ? <span className="ml-1 text-[11.5px] text-faint">Type @ to pick who answers</span> : null}
-          </div>
+        <div className="flex items-end gap-1 px-1.5 py-1.5">
+          <Tip label="Add image">
+            <button onClick={() => fileRef.current?.click()} className="grid size-8 shrink-0 place-items-center rounded-full text-faint hover:bg-hover hover:text-fg" aria-label="Add image">
+              <ImagePlus className="size-4" />
+            </button>
+          </Tip>
+          <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && void addFiles(e.target.files)} />
+          <textarea
+            ref={ref}
+            rows={1}
+            value={text}
+            disabled={disabled}
+            placeholder={placeholder}
+            onChange={(e) => {
+              setText(e.target.value)
+              updateMention(e.target.value, e.target.selectionStart)
+            }}
+            onKeyDown={onKey}
+            onPaste={(e) => {
+              if (e.clipboardData.files.length) {
+                e.preventDefault()
+                void addFiles(e.clipboardData.files)
+              }
+            }}
+            className="block max-h-[160px] min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-[14px] outline-none placeholder:text-faint"
+          />
           {working && !text.trim() ? (
             <Tip label="Stop">
               <Button size="icon-sm" variant="secondary" onClick={onStop} className="rounded-full" aria-label="Stop">
@@ -196,6 +193,7 @@ export function Composer({
             </Button>
           )}
         </div>
+        {members.length > 1 ? <p className="px-12 pb-2 text-[11.5px] text-faint">Type @ to pick who answers</p> : null}
       </div>
     </div>
   )

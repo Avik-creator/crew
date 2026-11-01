@@ -1,4 +1,4 @@
-import { Ellipsis, Eraser, MonitorPlay, Pause, Pencil, Play, Trash, Users } from "lucide-react"
+import { Ellipsis, Eraser, Monitor, Pause, Pencil, Play, Trash, Users } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { useLocation } from "wouter"
@@ -48,18 +48,15 @@ function ThreadHeader({ thread, bots, title, onScreen, screenOpen }: { thread: T
       <div className="no-drag flex min-w-0 items-center gap-2.5">
         {bot ? <BotAvatar bot={bot} size="sm" /> : thread.kind === "group" ? <Users className="size-4 text-muted" /> : <AvatarStack bots={bots} size="xs" />}
         <div className="min-w-0">
-          <p className="truncate text-[13.5px] font-semibold leading-tight">{title}</p>
-          <p className="truncate text-[11.5px] leading-tight text-faint">
-            {bot ? (bot.status === "paused" ? "Paused" : bot.job) : thread.kind === "group" ? (thread.goal || `${bots.length} bots`) : "Bots messaging each other · read only"}
-          </p>
+          <p className="truncate text-[15px] font-semibold leading-tight tracking-[-0.01em]">{title}</p>
         </div>
         {thread.kind === "group" ? <AvatarStack bots={bots} max={5} size="xs" /> : null}
       </div>
       <div className="no-drag flex items-center gap-1">
         {bots.length ? (
           <Tip label={screenOpen ? "Hide screen" : "Watch the screen"}>
-            <Button size="sm" variant={screenOpen ? "secondary" : "ghost"} onClick={onScreen}>
-              <MonitorPlay /> Screen
+            <Button size="icon-sm" variant={screenOpen ? "secondary" : "ghost"} onClick={onScreen} aria-label={screenOpen ? "Hide screen" : "Watch the screen"}>
+              <Monitor />
             </Button>
           </Tip>
         ) : null}

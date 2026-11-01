@@ -111,20 +111,22 @@ export function BotDialog({ open, onOpenChange, bot }: { open: boolean; onOpenCh
         }
       >
         <div className="space-y-5">
-          <div className="flex items-start gap-4">
+          <div className="flex items-center gap-4">
             <BotAvatar bot={{ name: draft.name || "?", color: draft.color, avatar: draft.avatar }} size="xl" />
-            <div className="flex-1 space-y-3">
+            <div className="min-w-0 flex-1 space-y-3">
               <Field label="Name">
                 <Input autoFocus value={draft.name} maxLength={50} placeholder="Ava" onChange={(e) => set("name", e.target.value)} />
               </Field>
-              <div className="flex items-center gap-1.5">
+              <div role="radiogroup" aria-label="Color" className="flex flex-wrap items-center gap-1.5">
                 {(Object.keys(BOT_COLORS) as BotColor[]).map((c) => (
                   <button
                     key={c}
                     type="button"
+                    role="radio"
+                    aria-checked={draft.color === c}
                     aria-label={c}
                     onClick={() => set("color", c)}
-                    className={cn("size-5 rounded-full transition-transform hover:scale-110", draft.color === c && "ring-2 ring-fg ring-offset-2 ring-offset-panel")}
+                    className={cn("size-5 rounded-full", draft.color === c && "ring-2 ring-fg ring-offset-2 ring-offset-panel")}
                     style={{ background: BOT_COLORS[c].hex }}
                   />
                 ))}
@@ -132,26 +134,31 @@ export function BotDialog({ open, onOpenChange, bot }: { open: boolean; onOpenCh
                   value={draft.avatar}
                   onChange={(e) => set("avatar", [...e.target.value].slice(-1).join(""))}
                   placeholder="Emoji"
-                  className="ml-2 h-7 w-20 text-center"
+                  aria-label="Emoji"
+                  className="ml-1 h-7 w-16 text-center"
                 />
               </div>
             </div>
           </div>
 
-          <Field label="Job" hint="One line. It decides what the bot answers in groups and what others ask it for.">
+          <Field label="Job" hint="This is what the bot is for, and what the others ask it to do.">
             <Input value={draft.job} maxLength={100} placeholder="Research and writing" onChange={(e) => set("job", e.target.value)} />
-            {!draft.job ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {JOBS.map((j) => (
-                  <button key={j} type="button" onClick={() => set("job", j)} className="rounded-full border border-line px-2.5 py-0.5 text-[12px] text-muted hover:bg-hover hover:text-fg">
-                    {j}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {JOBS.map((j) => (
+                <button
+                  key={j}
+                  type="button"
+                  aria-pressed={draft.job === j}
+                  onClick={() => set("job", j)}
+                  className={cn("rounded-full px-2.5 py-0.5 text-[12px]", draft.job === j ? "bg-fg text-bg" : "bg-raised text-muted hover:text-fg")}
+                >
+                  {j}
+                </button>
+              ))}
+            </div>
           </Field>
 
-          <Field label="How it should work" hint="Optional. Tone, rules, what to always or never do.">
+          <Field label="How it works" hint="Optional. Tone, rules, what to always or never do.">
             <Textarea
               value={draft.instructions}
               maxLength={4000}
@@ -163,26 +170,30 @@ export function BotDialog({ open, onOpenChange, bot }: { open: boolean; onOpenCh
 
           <div>
             <p className="mb-1.5 text-[12.5px] font-medium">Works on</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div role="radiogroup" aria-label="Works on" className="grid grid-cols-2 gap-1 rounded-xl bg-raised p-1">
               {[
-                { value: "cloud" as const, icon: Cloud, title: "Cloud computer", body: "Its own screen on your shared cloud computer. Safe to experiment." },
-                { value: "device" as const, icon: Laptop, title: "Your Mac", body: "Uses this computer. Commands and file changes ask first." },
+                { value: "cloud" as const, icon: Cloud, title: "Cloud computer" },
+                { value: "device" as const, icon: Laptop, title: "This Mac" },
               ].map((o) => (
                 <button
                   key={o.value}
                   type="button"
+                  role="radio"
+                  aria-checked={draft.runsOn === o.value}
                   onClick={() => set("runsOn", o.value)}
                   className={cn(
-                    "rounded-xl border p-3 text-left transition-colors",
-                    draft.runsOn === o.value ? "border-accent bg-accent-soft/60" : "border-line hover:bg-hover",
+                    "flex h-8 items-center justify-center gap-1.5 rounded-lg text-[13px]",
+                    draft.runsOn === o.value ? "bg-panel font-medium text-fg shadow-sm" : "text-muted hover:text-fg",
                   )}
                 >
-                  <o.icon className={cn("mb-2 size-4", draft.runsOn === o.value ? "text-accent" : "text-muted")} />
-                  <p className="text-[13px] font-medium">{o.title}</p>
-                  <p className="mt-0.5 text-[12px] text-muted">{o.body}</p>
+                  <o.icon className="size-3.5" />
+                  {o.title}
                 </button>
               ))}
             </div>
+            <p className="mt-1.5 text-[12px] text-faint">
+              {draft.runsOn === "cloud" ? "Its own screen on the shared computer." : "Uses this Mac. Commands and file changes ask first."}
+            </p>
             {draft.runsOn === "device" ? (
               <div className="mt-2">
                 {devices.data?.length ? (
