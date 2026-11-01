@@ -4,15 +4,26 @@ import { truncate } from "@crew/shared/node"
 import { tool, type Tool } from "ai"
 import { z } from "zod"
 
-// The model sees the screenshot as an image; the stored output keeps only its
-// size so history stays small (see stripImages in history.ts)
-const screenOutput = ({ output }: { output: ScreenshotPayload }) => ({
-  type: "content" as const,
-  value: [
-    { type: "text" as const, text: `Screen ${output.width}x${output.height}` },
-    { type: "file" as const, mediaType: output.mediaType, data: { type: "data" as const, data: output.base64 } },
-  ],
-})
+// The model sees the screenshot as an image. A later turn only has the size
+// (see stripImages), so it must not send a file part without a media type.
+const screenOutput = ({
+  output,
+}: {
+  output: Partial<ScreenshotPayload>
+}) => {
+  const value: Array<
+    | { type: "text"; text: string }
+    | { type: "file"; mediaType: string; data: { type: "data"; data: string } }
+  > = [{ type: "text", text: `Screen ${output.width ?? "?"}x${output.height ?? "?"}` }]
+  if (output.base64) {
+    value.push({
+      type: "file",
+      mediaType: output.mediaType ?? "image/jpeg",
+      data: { type: "data", data: output.base64 },
+    })
+  }
+  return { type: "content" as const, value }
+}
 
 const point = { x: z.number().int().min(0), y: z.number().int().min(0) }
 

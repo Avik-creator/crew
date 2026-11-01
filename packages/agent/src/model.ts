@@ -13,5 +13,48 @@ export function languageModel(id?: string | null): LanguageModel {
     baseURL: process.env.NEON_AI_GATEWAY_BASE_URL,
     apiKey: process.env.NEON_AI_GATEWAY_TOKEN,
   })
-  return neon(id || DEFAULT_MODEL())
+  // Claude's adapter drops image file-data inside tool results. image-data is shown.
+  return withToolImages(neon(id || DEFAULT_MODEL()))
+}
+
+type ContentPart = {
+  type?: string
+  mediaType?: string
+  data?: unknown
+  output?: { type?: string; value?: ContentPart[] }
+}
+
+// The AI SDK turns a tool image into file-data before this v3 model sees it.
+function withToolImages<T extends object>(model: T): T {
+  return new Proxy(model, {
+    get(target, prop, receiver) {
+      if (prop !== "doGenerate" && prop !== "doStream") return Reflect.get(target, prop, receiver)
+      const method = Reflect.get(target, prop, receiver) as (options: { prompt: unknown }) => unknown
+      return (options: { prompt: unknown }) => method.call(target, { ...options, prompt: rewriteToolImages(options.prompt) })
+    },
+  })
+}
+
+function rewriteToolImages(prompt: unknown): unknown {
+  if (!Array.isArray(prompt)) return prompt
+  return prompt.map((message) => {
+    if (!message || typeof message !== "object" || message.role !== "tool" || !Array.isArray(message.content)) return message
+    return {
+      ...message,
+      content: message.content.map((part: ContentPart) => {
+        if (part?.type !== "tool-result" || part.output?.type !== "content" || !Array.isArray(part.output.value)) return part
+        return {
+          ...part,
+          output: {
+            ...part.output,
+            value: part.output.value.map((item) =>
+              item?.type === "file-data" && typeof item.mediaType === "string" && item.mediaType.startsWith("image/") && typeof item.data === "string"
+                ? { type: "image-data", mediaType: item.mediaType === "image/*" ? "image/jpeg" : item.mediaType, data: item.data }
+                : item,
+            ),
+          },
+        }
+      }),
+    }
+  })
 }
