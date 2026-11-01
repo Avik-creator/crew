@@ -167,21 +167,15 @@ function TeamEvent({ part }: { part: ToolPart }) {
   )
 }
 
-// Marks where answers from other bots arrive in this conversation
-export function BotMessagesDivider({ authors, threadId }: { authors: (Bot | undefined)[]; threadId?: string }) {
+// Where answers from other bots arrive. They're for the bot that asked, which
+// sums them up, so the person sees only who replied.
+export function BotMessagesDivider({ authors }: { authors: (Bot | undefined)[] }) {
   return (
-    <div className="mt-6 mb-2 flex items-center gap-3 px-5 text-[12.5px]">
+    <div className="mt-4 mb-1 flex items-center gap-3 px-5 text-[12.5px]">
       <span className="h-px flex-1 bg-line" />
       <span className="flex items-center gap-1.5 px-1">
-        <span className="text-faint">Messages from</span>
-        <span>
-          <MentionList bots={authors} />
-        </span>
-        {threadId ? (
-          <Link href={`/t/${threadId}`} className="grid size-5 place-items-center rounded-full text-faint hover:bg-hover hover:text-fg" aria-label="Open their conversation">
-            <ChevronRight className="size-3.5" />
-          </Link>
-        ) : null}
+        <MentionList bots={authors} />
+        <span className="text-faint">replied</span>
       </span>
       <span className="h-px flex-1 bg-line" />
     </div>

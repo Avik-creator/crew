@@ -215,17 +215,36 @@ export function ChatRoute({ threadId }: { threadId: string }) {
     api<{ message: StoredMessage; runs: ActiveRun[]; routedReason: string | null }>(`/threads/${threadId}/messages`, { body: msg }),
   )
 
+  // Your message shows the moment you send it; the saved copy replaces it
   const onSend = async (msg: ComposerSend) => {
+    const key = keys.messages(threadId)
+    const draft: StoredMessage = {
+      id: `draft-${crypto.randomUUID()}`,
+      threadId,
+      role: "user",
+      authorType: "user",
+      authorId: me.data?.user.id ?? null,
+      parts: [
+        { type: "text", text: msg.text },
+        ...msg.images.map((img) => ({ type: "file" as const, mediaType: img.mediaType, url: `data:${img.mediaType};base64,${img.base64}` })),
+      ],
+      metadata: { mentionBotIds: msg.mentionBotIds },
+      createdAt: new Date().toISOString(),
+    }
+    // A refetch already in flight would land without the draft and blink it away
+    await queryClient.cancelQueries({ queryKey: key })
+    queryClient.setQueryData<StoredMessage[]>(key, (old) => [...(old ?? []), draft])
     void scrollToBottom()
     try {
       const res = await send.mutateAsync(msg)
-      queryClient.setQueryData<StoredMessage[]>(keys.messages(threadId), (old) => {
-        const list = old ?? []
+      queryClient.setQueryData<StoredMessage[]>(key, (old) => {
+        const list = (old ?? []).filter((m) => m.id !== draft.id)
         return list.some((m) => m.id === res.message.id) ? list : [...list, res.message]
       })
       for (const r of res.runs) liveRuns.add(threadId, r)
       if (!res.runs.length) toast("Nobody's available to answer. Resume a paused bot or add one to the group.")
     } catch (err) {
+      queryClient.setQueryData<StoredMessage[]>(key, (old) => (old ?? []).filter((m) => m.id !== draft.id))
       toast.error(errorMessage(err))
     }
   }
@@ -298,13 +317,14 @@ export function ChatRoute({ threadId }: { threadId: string }) {
                     const grouped =
                       !!prev && prev.authorType === m.authorType && prev.authorId === m.authorId && m.authorType !== "system" &&
                       relayedOf(prev) === relayed && gap < 5 * 60_000
-                    // A run of answers relayed from other bots opens with a divider naming them
-                    let divider = null
-                    if (relayed && !relayedOf(prev) && layout !== "bot") {
+                    // Answers relayed from other bots are for the bot that asked, which
+                    // sums them up. The person sees one line naming who replied.
+                    if (relayed && layout !== "bot") {
+                      if (relayedOf(prev)) return null
                       const run: StoredMessage[] = []
                       for (let j = i; j < shown.length && relayedOf(shown[j]); j++) run.push(shown[j]!)
                       const authors = [...new Set(run.map((r) => r.authorId ?? ""))].map((id) => byId.get(id))
-                      divider = <BotMessagesDivider authors={authors} threadId={(m.metadata as { botThreadId?: string }).botThreadId} />
+                      return <BotMessagesDivider key={m.id} authors={authors} />
                     }
                     const author =
                       m.authorType === "user"
@@ -314,7 +334,6 @@ export function ChatRoute({ threadId }: { threadId: string }) {
                           : ({ kind: "system" } as const)
                     return (
                       <div key={m.id}>
-                        {divider}
                         <Message
                           id={m.id}
                           author={author}
@@ -322,7 +341,7 @@ export function ChatRoute({ threadId }: { threadId: string }) {
                           metadata={m.metadata}
                           createdAt={m.createdAt}
                           layout={layout}
-                          grouped={grouped && !divider}
+                          grouped={grouped}
                           showStamp={gap > 30 * 60_000}
                           addressedTo={layout === "bot" || relayed ? byId.get(m.addressedToBotId ?? "") : undefined}
                           approvals={approvals.data}
@@ -330,6 +349,10 @@ export function ChatRoute({ threadId }: { threadId: string }) {
                       </div>
                     )
                   })}
+                  {send.isPending && !live.length ? (
+                    // Typing dots while the bot is being started, so the wait starts right away
+                    <Message id="pending" author={{ kind: "bot", bot: thread.kind === "direct" ? members[0] : undefined }} parts={[]} streaming layout="direct" />
+                  ) : null}
                   {live.map((r) => (
                     <LiveReply
                       key={r.triggerRunId}
