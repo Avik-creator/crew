@@ -93,6 +93,8 @@ export const userSettings = pgTable("user_settings", {
   timeZone: text("time_zone").notNull().default("UTC"),
   // Ask before a bot messages another bot on your behalf
   askBeforeBotMessages: boolean("ask_before_bot_messages").notNull().default(false),
+  // The person removed their chief; don't bring it back until they ask
+  chiefDismissed: boolean("chief_dismissed").notNull().default(false),
   notifications: jsonb("notifications")
     .$type<{ replies: boolean; approvals: boolean; botMessages: boolean }>()
     .notNull()
@@ -163,6 +165,9 @@ export const bots = pgTable(
     // Display n on the shared computer (:n); kept even in local mode
     displayNumber: integer("display_number").notNull(),
     status: text("status").$type<"active" | "paused" | "hidden">().notNull().default("active"),
+    // chief: the person's main assistant, which can set up and manage the
+    // other bots. At most one per person.
+    role: text("role").$type<"member" | "chief">().notNull().default("member"),
     wakeBudgetDaily: integer("wake_budget_daily").notNull().default(50),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -170,6 +175,7 @@ export const bots = pgTable(
   (t) => [
     index("bots_user_idx").on(t.userId),
     uniqueIndex("bots_user_display_idx").on(t.userId, t.displayNumber),
+    uniqueIndex("bots_user_chief_idx").on(t.userId).where(sql`${t.role} = 'chief'`),
   ],
 )
 
