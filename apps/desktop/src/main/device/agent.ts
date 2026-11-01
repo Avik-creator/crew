@@ -4,12 +4,20 @@ import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { promisify } from "node:util"
 
-import { serverToDeviceSchema, type DeviceCapabilities, type DeviceToServer, type ServerToDevice } from "@crew/shared"
+import {
+  serverToDeviceSchema,
+  type AppAction,
+  type AppSnapshotOptions,
+  type DeviceCapabilities,
+  type DeviceToServer,
+  type ServerToDevice,
+} from "@crew/shared"
 import { app, shell, systemPreferences } from "electron"
 import WebSocket from "ws"
 
 import { hideOverlay, showOverlay } from "../overlay"
 import { secureStore, serverUrl } from "../store"
+import { apps, findAgentDesktop } from "./apps"
 import { input } from "./input"
 import { McpSessions } from "./mcp"
 import { assertAllowed, expandHome } from "./paths"
@@ -48,6 +56,8 @@ export class DeviceAgent {
   private activeRuns = new Set<string>()
   private mcp = new McpSessions((f) => this.send(f))
   status: DeviceStatus = { linked: false, online: false }
+  // Whether agent-desktop was found; checked when the connection opens
+  private appsReady = false
 
   constructor(private onStatus: (s: DeviceStatus) => void) {}
 
@@ -64,7 +74,17 @@ export class DeviceAgent {
       screen: !mac || systemPreferences.getMediaAccessStatus("screen") === "granted",
       input: !mac || systemPreferences.isTrustedAccessibilityClient(false),
       stdioMcp: true,
+      apps: this.appsReady,
     }
+  }
+
+  // Looks for agent-desktop again and tells the server if that changed
+  async refreshApps() {
+    const ready = !!(await findAgentDesktop())
+    if (ready === this.appsReady) return ready
+    this.appsReady = ready
+    this.refreshHello()
+    return ready
   }
 
   start() {
@@ -87,6 +107,7 @@ export class DeviceAgent {
         allowedPaths: secureStore().get("allowedPaths") ?? [],
       })
       this.ping = setInterval(() => this.send({ type: "ping" }), 25_000)
+      void this.refreshApps()
     })
     ws.on("message", (raw) => void this.onFrame(String(raw)))
     ws.on("unexpected-response", (_req, res) => {
@@ -266,6 +287,19 @@ export class DeviceAgent {
       case "openUrl":
         await shell.openExternal(String(a.url))
         return `Opened ${a.url}`
+      case "listApps":
+        return apps.listApps()
+      case "readApp":
+        return apps.snapshot(a as AppSnapshotOptions)
+      case "useApp": {
+        // Accessibility actions don't move the pointer, but they still change
+        // the person's apps, so they need the same permission and overlay
+        if (!this.capabilities().input) {
+          throw new Error("Crew can't control apps. Allow Accessibility for Crew in System Settings → Privacy & Security.")
+        }
+        showOverlay(botName)
+        return apps.act(a as AppAction)
+      }
     }
   }
 }

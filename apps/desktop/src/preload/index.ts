@@ -25,7 +25,7 @@ const api = {
       ipcRenderer.invoke("crew:device:status") as Promise<
         DeviceStatus & {
           allowedPaths: string[]
-          capabilities: { shell: boolean; files: boolean; screen: boolean; input: boolean; stdioMcp: boolean }
+          capabilities: { shell: boolean; files: boolean; screen: boolean; input: boolean; stdioMcp: boolean; apps: boolean }
         }
       >,
     link: (name: string) => ipcRenderer.invoke("crew:device:link", name) as Promise<{ id: string; name: string }>,

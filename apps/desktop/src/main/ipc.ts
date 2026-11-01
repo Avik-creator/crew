@@ -50,11 +50,10 @@ export function registerIpc({ getWindow, agent, updater }: Deps) {
   })
   ipcMain.handle("crew:badge", (_e, count: number) => app.setBadgeCount(count))
 
-  ipcMain.handle("crew:device:status", () => ({
-    ...agent.status,
-    allowedPaths: store.get("allowedPaths") ?? [],
-    capabilities: agent.capabilities(),
-  }))
+  ipcMain.handle("crew:device:status", async () => {
+    await agent.refreshApps()
+    return { ...agent.status, allowedPaths: store.get("allowedPaths") ?? [], capabilities: agent.capabilities() }
+  })
   // Links this Mac to the signed-in account: the server returns a device token once
   ipcMain.handle("crew:device:link", async (_e, name: string) => {
     const token = store.get("sessionToken")
