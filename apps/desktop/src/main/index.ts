@@ -98,6 +98,8 @@ function createTray(agent: DeviceAgent) {
 
 app.whenReady().then(() => {
   app.setAppUserModelId("dev.crew.desktop")
+  // A packaged build takes its icon from build/icon.icns; in dev, show it too
+  if (!app.isPackaged) app.dock?.setIcon(join(import.meta.dirname, "../../resources/icon.png"))
   let renderTray = () => {}
   const agent = new DeviceAgent((status) => {
     win?.webContents.send("crew:device", status)
