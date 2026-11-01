@@ -86,6 +86,22 @@ export function describeTool(name: string, input: Record<string, any> = {}): { i
       return { icon: <Users />, text: <>Made the group <span className="text-fg">{input.name}</span></> }
     case "createSchedule":
       return { icon: <CalendarClock />, text: <>Scheduled <span className="text-fg">{input.name}</span> for {input.bot}</> }
+    case "readPage":
+      return { icon: <FileText />, text: "Read the page" }
+    case "pageControls":
+      return { icon: <ScanSearch />, text: "Looked at the page's controls" }
+    case "usePage": {
+      const what: Record<string, ReactNode> = {
+        click: "Clicked on the page",
+        fill: <>Filled in <span className="text-fg">“{clip(input.text, 40)}”</span></>,
+        select: <>Picked <span className="text-fg">“{clip(input.option, 40)}”</span></>,
+        press: <>Pressed <span className="font-mono text-fg">{input.key}</span></>,
+        goto: <>Went to <span className="text-fg">{clip(input.url)}</span></>,
+        back: "Went back",
+        scroll: `Scrolled ${input.direction ?? "down"}`,
+      }
+      return { icon: <Globe />, text: what[input.action] ?? "Used the page" }
+    }
     case "listApps":
       return { icon: <AppWindow />, text: "Checked which apps are open" }
     case "readApp":
