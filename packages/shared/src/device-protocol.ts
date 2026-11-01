@@ -19,6 +19,10 @@ export const localToolNames = [
   "keyboardPress",
   "openApp",
   "openUrl",
+  // Apps through the accessibility tree (agent-desktop on the Mac)
+  "listApps",
+  "readApp",
+  "useApp",
 ] as const
 export type LocalToolName = (typeof localToolNames)[number]
 
@@ -28,6 +32,8 @@ export const deviceCapabilitiesSchema = z.object({
   screen: z.boolean(),
   input: z.boolean(),
   stdioMcp: z.boolean(),
+  // agent-desktop is installed, so bots can read and use apps by their UI tree
+  apps: z.boolean().default(false),
 })
 export type DeviceCapabilities = z.infer<typeof deviceCapabilitiesSchema>
 
@@ -101,4 +107,23 @@ export type ScreenshotPayload = {
   mediaType: "image/jpeg" | "image/png"
   width: number
   height: number
+}
+
+// One step in an app, aimed at an element ref from the latest readApp.
+// Shared because it crosses the wire from the server to the Mac.
+export type AppAction =
+  | { type: "click" | "right-click" | "focus" | "clear" | "check" | "uncheck" | "toggle" | "expand" | "collapse" | "scroll-to"; ref: string }
+  | { type: "type" | "set-value"; ref: string; text: string }
+  | { type: "select"; ref: string; option: string }
+  | { type: "scroll"; ref: string; direction: "up" | "down" | "left" | "right"; amount?: number }
+  | { type: "press"; keys: string; app?: string }
+
+export type AppSnapshotOptions = {
+  app: string
+  // Drill into one element of an earlier snapshot
+  root?: string
+  // A shallow map of a big app, to drill into afterwards
+  skeleton?: boolean
+  // An open menu, sheet or alert
+  surface?: "menu" | "sheet" | "alert"
 }

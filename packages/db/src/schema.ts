@@ -136,7 +136,7 @@ export const devices = pgTable(
     status: text("status").$type<"online" | "offline">().notNull().default("offline"),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     capabilities: jsonb("capabilities")
-      .$type<{ shell: boolean; files: boolean; screen: boolean; input: boolean; stdioMcp: boolean }>()
+      .$type<{ shell: boolean; files: boolean; screen: boolean; input: boolean; stdioMcp: boolean; apps?: boolean }>()
       .notNull()
       .default({ shell: false, files: false, screen: false, input: false, stdioMcp: false }),
     allowedPaths: text("allowed_paths").array().notNull().default(sql`'{}'::text[]`),
