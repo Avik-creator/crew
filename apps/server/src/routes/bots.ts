@@ -8,6 +8,7 @@ import { and, eq, ne } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
 
+import { publish } from "../lib/bus"
 import { badRequest, notFound, requireUser, type AppEnv } from "../lib/http"
 
 export async function ownBot(userId: string, botId: string) {
@@ -50,6 +51,8 @@ export const botRoutes = new Hono<AppEnv>()
     const { serverIds, ...input } = c.req.valid("json")
     if (input.runsOn === "device" && !input.deviceId) badRequest("Pick which computer this bot works on.")
     const result = await createBot(user.id, { ...input, serverIds })
+    // Other windows and devices refresh their sidebar
+    publish(user.id, { type: "team.updated" })
     return c.json({ ...result.bot, serverIds, directThreadId: result.threadId }, 201)
   })
   // Brings back the chief after the person removed it
@@ -57,6 +60,7 @@ export const botRoutes = new Hono<AppEnv>()
     const user = c.get("user")
     await setChiefDismissed(user.id, false)
     const chief = await ensureChief(user.id)
+    publish(user.id, { type: "team.updated" })
     return c.json({ id: chief?.id ?? null }, 201)
   })
   .patch("/:id", json(updateSchema), async (c) => {
@@ -65,6 +69,7 @@ export const botRoutes = new Hono<AppEnv>()
     const { serverIds, ...input } = c.req.valid("json")
     const [updated] = await db.update(bots).set(input).where(eq(bots.id, bot.id)).returning()
     if (serverIds) await setBotServers(bot.id, serverIds)
+    publish(user.id, { type: "team.updated" })
     return c.json(updated)
   })
   .delete("/:id", async (c) => {
@@ -82,6 +87,7 @@ export const botRoutes = new Hono<AppEnv>()
     await db.delete(bots).where(eq(bots.id, bot.id))
     if (bot.role === "chief") await setChiefDismissed(user.id, true)
     if (bot.runsOn === "cloud") void releaseDisplay(user.id, bot.displayNumber).catch(() => {})
+    publish(user.id, { type: "team.updated" })
     return c.body(null, 204)
   })
   // A one-minute ticket for the live screen socket, plus the VNC password
