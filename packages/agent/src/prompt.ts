@@ -12,6 +12,8 @@ export type PromptInput = {
   background: boolean
   // In a bot thread: who messaged, and whether a person is waiting on it
   peerName?: string
+  // The Mac can read apps' accessibility trees (readApp/useApp)
+  appControl?: boolean
 }
 
 const section = (title: string, body: string | string[]) => {
@@ -36,6 +38,9 @@ export function buildSystemPrompt(p: PromptInput) {
       : [
           `You are working on ${userName}'s own Mac. Act carefully: this is their real computer with their real data.`,
           "Prefer reading and asking over changing things. Never delete files unless asked.",
+          p.appControl
+            ? "To work in an app, use readApp to see its controls, then useApp with a ref from that read. It's reliable and doesn't move their mouse. Read again after each change. Use screenshots and mouse tools only for things readApp can't see, like canvases or images."
+            : "",
         ]
 
   const threadInfo =

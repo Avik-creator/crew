@@ -3,6 +3,7 @@ import {
   approvals,
   bots,
   db,
+  devices,
   messages,
   runs,
   threadMembers,
@@ -35,6 +36,7 @@ import { languageModel } from "./model"
 import { buildSystemPrompt } from "./prompt"
 import { saveMessage } from "./store"
 import { collabTools } from "./tools/collab"
+import { appTools } from "./tools/apps"
 import { computerTools } from "./tools/computer"
 import { loadMemories, memoryTools } from "./tools/memory"
 
@@ -88,15 +90,15 @@ async function wakesToday(botId: string) {
   return rows.length
 }
 
-function driverFor(ctx: Omit<TurnContext, "dispatcher" | "events">): ComputerDriver {
+async function driverFor(ctx: Omit<TurnContext, "dispatcher" | "events">): Promise<ComputerDriver> {
   const { bot } = ctx
   if (bot.runsOn === "device" && bot.deviceId) {
-    return new DeviceDriver(bot.deviceId, {
-      runId: ctx.runId,
-      botId: bot.id,
-      botName: bot.name,
-      background: ctx.background,
-    })
+    const [device] = await db.select({ capabilities: devices.capabilities }).from(devices).where(eq(devices.id, bot.deviceId))
+    return new DeviceDriver(
+      bot.deviceId,
+      { runId: ctx.runId, botId: bot.id, botName: bot.name, background: ctx.background },
+      { apps: device?.capabilities.apps ?? false },
+    )
   }
   return new LazyDriver("cloud", () => getDisplayDriver(ctx.userId, bot.displayNumber), {
     openApp: true,
@@ -202,9 +204,10 @@ export async function runTurn(payload: TurnPayload, deps: TurnDeps): Promise<Tur
     const originThreadId = await originOf(thread, trigger)
 
     connectors = await loadConnectorTools({ userId: ctx.userId, botId: bot.id, background })
-    const driver = driverFor(ctx)
+    const driver = await driverFor(ctx)
     const tools = prepareTools({
       ...computerTools(driver),
+      ...(driver.apps ? appTools(driver.apps) : {}),
       ...memoryTools(ctx),
       ...collabTools(ctx, originThreadId),
       ...connectors.tools,
@@ -238,6 +241,7 @@ export async function runTurn(payload: TurnPayload, deps: TurnDeps): Promise<Tur
       },
       background,
       peerName: peer?.name,
+      appControl: !!driver.apps,
     })
 
     const metadata: CrewMessageMetadata = {
