@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react"
+
 import type { Bot, BotColor } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -28,18 +30,83 @@ const EMOJI = { "2xs": "text-[8px]", xs: "text-[11px]", sm: "text-[13px]", md: "
 // Small stable number from the name, so each bot keeps the same look
 const seed = (name: string) => [...name].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7)
 
-// A round face in the bot's color. The gaze shifts with the name, so bots with
-// the same color still look different at a glance.
+// Every face on screen looks toward the pointer. One listener for the whole
+// window, one read per face per frame, and no React renders: the eyes are
+// moved straight on the DOM.
+const faces = new Set<SVGGElement>()
+let pointer: { x: number; y: number } | null = null
+let frame = 0
+
+const REACH = 260 // px of pointer distance for a full glance
+const MAX_X = 1.7 // viewBox units the eyes may travel
+const MAX_Y = 1.3
+
+function look() {
+  frame = 0
+  for (const eyes of faces) {
+    const box = eyes.ownerSVGElement?.getBoundingClientRect()
+    if (!box?.width || !pointer) {
+      eyes.style.transform = ""
+      continue
+    }
+    const dx = pointer.x - (box.left + box.width / 2)
+    const dy = pointer.y - (box.top + box.height / 2)
+    const d = Math.hypot(dx, dy) || 1
+    const pull = Math.min(1, d / REACH)
+    eyes.style.transform = `translate(${((dx / d) * MAX_X * pull).toFixed(2)}px, ${((dy / d) * MAX_Y * pull).toFixed(2)}px)`
+  }
+}
+
+const schedule = () => (frame ||= requestAnimationFrame(look))
+const onMove = (e: PointerEvent) => {
+  pointer = { x: e.clientX, y: e.clientY }
+  schedule()
+}
+const onLeave = () => {
+  pointer = null
+  schedule()
+}
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
+function track(eyes: SVGGElement) {
+  if (reducedMotion()) return () => {}
+  if (!faces.size) {
+    window.addEventListener("pointermove", onMove, { passive: true })
+    document.documentElement.addEventListener("pointerleave", onLeave)
+    window.addEventListener("blur", onLeave)
+  }
+  faces.add(eyes)
+  schedule()
+  return () => {
+    faces.delete(eyes)
+    if (!faces.size) {
+      window.removeEventListener("pointermove", onMove)
+      document.documentElement.removeEventListener("pointerleave", onLeave)
+      window.removeEventListener("blur", onLeave)
+    }
+  }
+}
+
+// A round face in the bot's color. The resting gaze and eye shape come from
+// the name, so bots with the same color still look different; the eyes follow
+// the pointer and blink now and then.
 function Face({ name }: { name: string }) {
+  const eyes = useRef<SVGGElement>(null)
+  useEffect(() => (eyes.current ? track(eyes.current) : undefined), [])
   const s = seed(name)
-  const dx = ((s % 3) - 1) * 1.1
-  const dy = (((s >> 2) % 3) - 1) * 0.6
+  const dx = ((s % 3) - 1) * 0.6
+  const dy = (((s >> 2) % 3) - 1) * 0.4
   const tall = (s >> 4) % 2 === 0
   const h = tall ? 4.4 : 3.6
+  const y = 9.6 + dy - h / 2 + 1.6
   return (
     <svg viewBox="0 0 24 24" className="size-full" aria-hidden>
-      <rect x={8.1 + dx} y={9.6 + dy - h / 2 + 1.6} width={2.3} height={h} rx={1.15} fill="rgb(0 0 0 / 0.72)" />
-      <rect x={13.6 + dx} y={9.6 + dy - h / 2 + 1.6} width={2.3} height={h} rx={1.15} fill="rgb(0 0 0 / 0.72)" />
+      <g ref={eyes} className="face-eyes">
+        <g className="face-blink" style={{ animationDelay: `${-(s % 5000)}ms`, animationDuration: `${4200 + (s % 2400)}ms` }}>
+          <rect x={8.1 + dx} y={y} width={2.3} height={h} rx={1.15} fill="rgb(0 0 0 / 0.72)" />
+          <rect x={13.6 + dx} y={y} width={2.3} height={h} rx={1.15} fill="rgb(0 0 0 / 0.72)" />
+        </g>
+      </g>
     </svg>
   )
 }
