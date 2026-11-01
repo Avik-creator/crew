@@ -45,6 +45,7 @@ export type StoredMessage = {
   authorId: string | null
   parts: UIMessage["parts"]
   metadata: Record<string, unknown> | null
+  addressedToBotId?: string | null
   createdAt: string
 }
 
