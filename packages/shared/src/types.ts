@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-import { BOT_INSTRUCTIONS_MAX, BOT_JOB_MAX, BOT_NAME_MAX, LIMITS } from "./constants"
+import { BOT_COLOR_NAMES, BOT_INSTRUCTIONS_MAX, BOT_JOB_MAX, BOT_NAME_MAX, LIMITS } from "./constants"
 
 export const botInputSchema = z.object({
   name: z.string().trim().min(1, "Give your bot a name.").max(BOT_NAME_MAX),
@@ -10,6 +10,7 @@ export const botInputSchema = z.object({
   runsOn: z.enum(["cloud", "device"]).default("cloud"),
   deviceId: z.string().optional().nullable(),
   avatar: z.string().optional(),
+  color: z.enum(BOT_COLOR_NAMES).optional(),
   wakeBudgetDaily: z.number().int().min(0).max(1000).optional(),
 })
 export type BotInput = z.infer<typeof botInputSchema>

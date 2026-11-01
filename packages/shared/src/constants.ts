@@ -35,6 +35,9 @@ export const CLOUD_SCREEN = { width: 1280, height: 800 } as const
 // The app's custom protocol, used for auth and connector callbacks
 export const DEEP_LINK_SCHEME = "crew"
 
+export const BOT_COLOR_NAMES = ["violet", "blue", "emerald", "amber", "rose", "cyan", "orange", "pink"] as const
+export type BotColorName = (typeof BOT_COLOR_NAMES)[number]
+
 export const BOT_NAME_MAX = 50
 export const BOT_JOB_MAX = 100
 export const BOT_INSTRUCTIONS_MAX = 4000
