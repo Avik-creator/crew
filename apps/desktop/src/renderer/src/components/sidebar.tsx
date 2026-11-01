@@ -1,9 +1,9 @@
-import { Brain, CalendarClock, ChevronDown, Inbox, LogOut, Plug, Plus, Search, Settings } from "lucide-react"
+import { Brain, CalendarClock, ChevronDown, Inbox, LogOut, Plug, Plus, Search, Settings, Sparkles } from "lucide-react"
 import { useState, type ReactNode } from "react"
 import { Link, useLocation } from "wouter"
 
 import { useApprovals, useBots, useMe, useTakeovers, useThreads } from "@/lib/queries"
-import type { Thread } from "@/lib/types"
+import type { Bot, Thread } from "@/lib/types"
 import { useUI } from "@/lib/ui"
 import { cn, shortTime } from "@/lib/utils"
 
@@ -39,7 +39,19 @@ const plainPreview = (text: string) =>
     .replace(/\s+/g, " ")
     .trim()
 
-function ThreadItem({ thread, label, avatar }: { thread: Thread; label: string; avatar: ReactNode }) {
+// The main assistant's face carries a small spark, so it reads as the one in charge
+export function ChiefAvatar({ bot, working, size = "md" }: { bot: Bot; working?: boolean; size?: "md" | "lg" | "xl" }) {
+  return (
+    <span className="relative inline-flex shrink-0">
+      <BotAvatar bot={bot} size={size} working={working} />
+      <span className="absolute -right-0.5 -bottom-0.5 grid size-3.5 place-items-center rounded-full bg-fg text-bg ring-2 ring-bg" aria-label="Main assistant">
+        <Sparkles className="size-2" strokeWidth={2.5} />
+      </span>
+    </span>
+  )
+}
+
+function ThreadItem({ thread, label, avatar, placeholder }: { thread: Thread; label: string; avatar: ReactNode; placeholder?: string }) {
   const [location] = useLocation()
   const active = location === `/t/${thread.id}`
   const working = thread.working.length > 0
@@ -58,7 +70,7 @@ function ThreadItem({ thread, label, avatar }: { thread: Thread; label: string; 
           {thread.lastMessageAt ? <span className="shrink-0 text-[11px] text-faint">{shortTime(thread.lastMessageAt)}</span> : null}
         </span>
         <span className="mt-0.5 flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-[12px] text-faint">{plainPreview(thread.lastMessagePreview) || (working ? "Working" : "")}</span>
+          <span className="min-w-0 flex-1 truncate text-[12px] text-faint">{plainPreview(thread.lastMessagePreview) || (working ? "Working" : (placeholder ?? ""))}</span>
           {working ? <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="Working" /> : thread.unread && !active ? <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="Unread" /> : null}
         </span>
       </span>
@@ -92,7 +104,9 @@ export function Sidebar({ onSignOut }: { onSignOut: () => void }) {
   const botList = (bots.data ?? []).filter((b) => b.status !== "hidden")
   const byId = new Map(botList.map((b) => [b.id, b]))
   const all = threads.data ?? []
-  const direct = all.filter((t) => t.kind === "direct")
+  const chief = botList.find((b) => b.role === "chief")
+  const chiefThread = chief ? all.find((t) => t.id === chief.directThreadId) : undefined
+  const direct = all.filter((t) => t.kind === "direct" && t.id !== chiefThread?.id)
   const groups = all.filter((t) => t.kind === "group")
   const botChats = all.filter((t) => t.kind === "bot")
   const inboxCount = (approvals.data?.length ?? 0) + (takeovers.data?.length ?? 0)
@@ -115,6 +129,16 @@ export function Sidebar({ onSignOut }: { onSignOut: () => void }) {
       </div>
 
       <div className="mt-1 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+        {chief && chiefThread ? (
+          <div className="mt-3">
+            <ThreadItem
+              thread={chiefThread}
+              label={chief.name}
+              avatar={<ChiefAvatar bot={chief} working={chiefThread.working.length > 0} />}
+              placeholder="Ask me to set up bots for you"
+            />
+          </div>
+        ) : null}
         <Group
           title="Bots"
           action={

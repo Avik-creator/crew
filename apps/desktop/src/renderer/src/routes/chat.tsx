@@ -9,6 +9,7 @@ import { AvatarStack, BotAvatar, GroupAvatar } from "@/components/bot-avatar"
 import { Composer, type ComposerSend } from "@/components/composer"
 import { TakeoverCard } from "@/components/inbox-cards"
 import { Message, type ChatLayout } from "@/components/message"
+import { ChiefAvatar } from "@/components/sidebar"
 import { ScreenPanel } from "@/components/screen-panel"
 import { Button } from "@/components/ui/button"
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/menu"
@@ -34,6 +35,38 @@ function LiveReply({ run, bot, layout, onMessageId }: { run: ActiveRun; bot: Bot
       layout={layout}
       approvals={approvals.data}
     />
+  )
+}
+
+const CHIEF_STARTERS = [
+  "Set up a bot that keeps my inbox at zero",
+  "Build a small team that researches competitors and writes me a weekly brief",
+  "Which bots would help with my job? Ask me a few questions first",
+]
+
+// The main assistant's empty chat: what it does, and a few ways to start
+function ChiefIntro({ bot, onPick }: { bot: Bot; onPick: (text: string) => void }) {
+  return (
+    <>
+      <span className="inline-flex">
+        <ChiefAvatar bot={bot} size="xl" />
+      </span>
+      <h2 className="mt-4 text-[17px] font-semibold tracking-[-0.01em]">{bot.name}</h2>
+      <p className="mt-1 text-[13px] leading-relaxed text-muted">
+        Tell me what you need help with. I'll set up the right bots, put them in groups, and get them working.
+      </p>
+      <div className="mt-6 flex flex-col gap-2">
+        {CHIEF_STARTERS.map((s) => (
+          <button
+            key={s}
+            onClick={() => onPick(s)}
+            className="rounded-2xl border border-line px-3.5 py-2.5 text-left text-[13px] text-fg transition-colors hover:border-line-strong hover:bg-hover"
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+    </>
   )
 }
 
@@ -65,7 +98,9 @@ function ThreadHeader({
     : bot
       ? bot.status === "paused"
         ? "Paused"
-        : bot.job
+        : bot.role === "chief"
+          ? "Your main assistant. Ask it to set up bots and groups."
+          : bot.job
       : thread.kind === "group"
         ? bots.map((b) => b.name).join(", ")
         : "A private thread between bots. You can read along."
@@ -73,7 +108,9 @@ function ThreadHeader({
   return (
     <header className="drag flex h-[56px] shrink-0 items-center justify-between gap-3 border-b border-line px-4">
       <div className="no-drag flex min-w-0 items-center gap-2.5">
-        {bot ? <BotAvatar bot={bot} size="md" working={working} /> : thread.kind === "group" ? <GroupAvatar bots={bots} size="md" /> : <AvatarStack bots={bots} size="sm" />}
+        {bot ? (
+          bot.role === "chief" ? <ChiefAvatar bot={bot} working={working} /> : <BotAvatar bot={bot} size="md" working={working} />
+        ) : thread.kind === "group" ? <GroupAvatar bots={bots} size="md" /> : <AvatarStack bots={bots} size="sm" />}
         <div className="min-w-0">
           <p className="truncate text-[14.5px] font-semibold leading-tight tracking-[-0.01em]">{title}</p>
           <p className={cn("truncate text-[12px] leading-tight", working ? "text-accent" : "text-faint")}>{subtitle}</p>
@@ -116,10 +153,14 @@ function ThreadHeader({
               <MenuItem
                 danger
                 onSelect={() => {
-                  if (confirm(`Delete ${bot.name}? Its chat and notes are removed.`)) removeBot.mutate(undefined, { onSuccess: () => navigate("/") })
+                  const ask =
+                    bot.role === "chief"
+                      ? `Remove ${bot.name}? Its chat goes too. You can bring it back in Settings.`
+                      : `Delete ${bot.name}? Its chat and notes are removed.`
+                  if (confirm(ask)) removeBot.mutate(undefined, { onSuccess: () => navigate("/") })
                 }}
               >
-                <Trash /> Delete bot
+                <Trash /> {bot.role === "chief" ? "Remove assistant" : "Delete bot"}
               </MenuItem>
             ) : (
               <MenuItem
@@ -224,7 +265,9 @@ export function ChatRoute({ threadId }: { threadId: string }) {
               {!shown.length && !live.length ? (
                 <div className="flex h-full items-center justify-center px-6">
                   <div className="max-w-sm text-center">
-                    {thread.kind === "direct" && members[0] ? (
+                    {thread.kind === "direct" && members[0]?.role === "chief" ? (
+                      <ChiefIntro bot={members[0]} onPick={(text) => void onSend({ text, mentionBotIds: [], images: [] })} />
+                    ) : thread.kind === "direct" && members[0] ? (
                       <>
                         <BotAvatar bot={members[0]} size="xl" className="mx-auto" />
                         <h2 className="mt-4 text-[17px] font-semibold tracking-[-0.01em]">{members[0].name}</h2>

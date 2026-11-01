@@ -199,6 +199,7 @@ export function SettingsRoute({ onSignOut }: { onSignOut: () => void }) {
   const reset = useAction(() => api("/computer/reset", { method: "POST" }), [keys.me])
   const s = me.data?.settings
   const computer = me.data?.computer
+  const restoreChief = useAction(() => api("/bots/chief", { method: "POST" }), [keys.me, keys.bots, keys.threads])
   const zones = [...new Set(["UTC", ...(s?.timeZone ? [s.timeZone] : []), ...Intl.supportedValuesOf("timeZone")])]
 
   return (
@@ -228,6 +229,18 @@ export function SettingsRoute({ onSignOut }: { onSignOut: () => void }) {
             </Row>
           </div>
         </Section>
+
+        {s?.chiefDismissed ? (
+          <Section title="Main assistant">
+            <div className="divide-y divide-line rounded-xl border border-line bg-panel px-4">
+              <Row title="Crew" body="The bot that sets up and manages your other bots from chat. You removed it.">
+                <Button size="sm" loading={restoreChief.isPending} onClick={() => restoreChief.mutate(undefined)}>
+                  Bring it back
+                </Button>
+              </Row>
+            </div>
+          </Section>
+        ) : null}
 
         <Section title="This Mac">
           <ThisMac />

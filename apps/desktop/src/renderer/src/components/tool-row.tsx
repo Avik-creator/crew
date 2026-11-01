@@ -2,6 +2,7 @@ import {
   AppWindow,
   AtSign,
   Brain,
+  CalendarClock,
   Check,
   ChevronRight,
   Eye,
@@ -15,6 +16,7 @@ import {
   Plug,
   ScanSearch,
   Terminal,
+  UserPlus,
   Users,
   X,
 } from "lucide-react"
@@ -74,6 +76,16 @@ export function describeTool(name: string, input: Record<string, any> = {}): { i
       return { icon: <Globe />, text: <>Opened <span className="text-fg">{clip(input.url)}</span></> }
     case "openApp":
       return { icon: <Globe />, text: `Opened ${input.name}` }
+    case "listTeam":
+      return { icon: <Users />, text: "Looked over the team" }
+    case "createBot":
+      return { icon: <UserPlus />, text: <>Created <span className="text-fg">{input.name}</span></> }
+    case "updateBot":
+      return { icon: <Users />, text: <>Updated <span className="text-fg">{input.name}</span></> }
+    case "createGroup":
+      return { icon: <Users />, text: <>Made the group <span className="text-fg">{input.name}</span></> }
+    case "createSchedule":
+      return { icon: <CalendarClock />, text: <>Scheduled <span className="text-fg">{input.name}</span> for {input.bot}</> }
     case "listApps":
       return { icon: <AppWindow />, text: "Checked which apps are open" }
     case "readApp":

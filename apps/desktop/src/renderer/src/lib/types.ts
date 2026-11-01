@@ -16,6 +16,8 @@ export type Bot = {
   deviceId: string | null
   displayNumber: number
   status: "active" | "paused" | "hidden"
+  // chief: the person's main assistant, which sets up the other bots
+  role: "member" | "chief"
   wakeBudgetDaily: number
   serverIds: string[]
   directThreadId: string | null
@@ -160,6 +162,7 @@ export type Me = {
   settings: {
     timeZone: string
     askBeforeBotMessages: boolean
+    chiefDismissed: boolean
     notifications: { replies: boolean; approvals: boolean; botMessages: boolean }
   }
   computer: { status: "creating" | "running" | "paused" | "error" | "none"; error?: string | null; lastActiveAt?: string | null }

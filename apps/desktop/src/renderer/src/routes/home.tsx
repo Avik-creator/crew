@@ -1,8 +1,9 @@
-import { Check, Laptop, Plug, Plus, Users } from "lucide-react"
+import { ArrowRight, Check, Laptop, Plug, Plus, Users } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Link } from "wouter"
 
 import { BotAvatar } from "@/components/bot-avatar"
+import { ChiefAvatar } from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
 import { useBots, useConnectors, useMe, useThreads } from "@/lib/queries"
 import { useUI } from "@/lib/ui"
@@ -32,7 +33,8 @@ export function HomeRoute() {
   const [device, setDevice] = useState<{ linked: boolean } | null>(null)
   useEffect(() => void window.crew.device.status().then(setDevice), [])
 
-  const botList = bots.data ?? []
+  const chief = (bots.data ?? []).find((b) => b.role === "chief")
+  const botList = (bots.data ?? []).filter((b) => b.role !== "chief")
   const hasGroup = (threads.data ?? []).some((t) => t.kind === "group")
   const hasApp = (connectors.data?.servers ?? []).some((s) => s.connection?.status === "active")
   const hour = new Date().getHours()
@@ -47,6 +49,20 @@ export function HomeRoute() {
           {me.data ? `, ${me.data.user.name.split(" ")[0]}` : ""}
         </h1>
         <p className="mt-1 text-[13.5px] text-muted">Your crew works on its own computer. Give them a job and watch them do it.</p>
+
+        {chief?.directThreadId ? (
+          <Link
+            href={`/t/${chief.directThreadId}`}
+            className="mt-8 flex items-center gap-4 rounded-2xl border border-line bg-panel p-4 transition-colors hover:border-line-strong hover:bg-raised/40"
+          >
+            <ChiefAvatar bot={chief} size="lg" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[14px] font-semibold">Ask {chief.name}</p>
+              <p className="text-[12.5px] text-muted">Say what you need and it sets up the right bots and groups for you.</p>
+            </div>
+            <ArrowRight className="size-4 text-faint" />
+          </Link>
+        ) : null}
 
         {botList.length ? (
           <div className="mt-8 grid grid-cols-2 gap-3">
@@ -78,7 +94,7 @@ export function HomeRoute() {
           <Step
             done={botList.length > 0}
             title="Create your first bot"
-            body="Give it a name and a job. It gets its own screen on your cloud computer."
+            body={chief ? `Give it a name and a job, or ask ${chief.name} to make one.` : "Give it a name and a job. It gets its own screen on your cloud computer."}
             action={<Button variant="primary" size="sm" onClick={() => ui.editBot()}><Plus /> New bot</Button>}
           />
           <Step

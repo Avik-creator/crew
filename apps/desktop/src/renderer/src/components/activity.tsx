@@ -6,12 +6,14 @@ import { useBots, useThreads } from "@/lib/queries"
 import type { Bot } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
+import { BotAvatar, GroupAvatar } from "./bot-avatar"
 import { MentionChip, MentionList } from "./mention-chip"
 import { describeTool, toolNameOf, ToolRow, type ToolPart } from "./tool-row"
 import { Spinner } from "./ui/spinner"
 
 // Tools that talk to people or teammates read as events, not work steps
-export const EVENT_TOOLS = new Set(["messageBot", "handoff", "requestTakeover"])
+export const EVENT_TOOLS = new Set(["messageBot", "handoff", "requestTakeover", "createBot", "updateBot", "createGroup"])
+const TEAM_TOOLS = new Set(["createBot", "updateBot", "createGroup"])
 
 const isRunning = (p: ToolPart) => p.state === "input-streaming" || p.state === "input-available" || p.state === "approval-responded"
 
@@ -68,6 +70,7 @@ export function BotEvent({ part, fromBotId }: { part: ToolPart; fromBotId?: stri
   const input = (part.input ?? {}) as { to?: string; message?: string; note?: string; reason?: string; instruction?: string }
   const target = findBot(bots.data, input.to)
   const pair = usePairThread(fromBotId, target?.id)
+  if (TEAM_TOOLS.has(name)) return <TeamEvent part={part} />
   const output = typeof part.output === "string" ? part.output : ""
   const failed = part.state === "output-error" || (part.state === "output-available" && !!output && !/^(Sent|Handed off|Asked)/.test(output))
   const running = isRunning(part)
@@ -110,6 +113,54 @@ export function BotEvent({ part, fromBotId }: { part: ToolPart; fromBotId?: stri
       {pair && name === "messageBot" ? (
         <Link href={`/t/${pair.id}`} className="flex items-center gap-1 border-t border-line px-3 py-1.5 text-[11.5px] text-muted hover:bg-hover hover:text-fg">
           Open their conversation <ChevronRight className="size-3" />
+        </Link>
+      ) : null}
+    </div>
+  )
+}
+
+// The main assistant changing the team: a new bot, an edit, or a new group
+function TeamEvent({ part }: { part: ToolPart }) {
+  const bots = useBots()
+  const threads = useThreads()
+  const name = toolNameOf(part)
+  const input = (part.input ?? {}) as { name?: string; newName?: string; job?: string; members?: string[]; goal?: string; status?: string }
+  const output = typeof part.output === "string" ? part.output : ""
+  const running = isRunning(part)
+  const failed = part.state === "output-error" || (part.state === "output-available" && !/^(Created|Updated)/.test(output))
+  const bot = findBot(bots.data, input.newName ?? input.name)
+  const group = name === "createGroup" ? threads.data?.find((t) => t.kind === "group" && t.name?.toLowerCase() === input.name?.toLowerCase()) : undefined
+  const members = (input.members ?? []).map((m) => findBot(bots.data, m))
+
+  const verb = name === "createBot" ? "New bot" : name === "updateBot" ? "Updated" : "New group"
+  const href = name === "createGroup" ? (group ? `/t/${group.id}` : undefined) : bot?.directThreadId ? `/t/${bot.directThreadId}` : undefined
+
+  return (
+    <div className={cn("my-1.5 w-full max-w-[30rem] overflow-hidden rounded-2xl border bg-bg", failed ? "border-danger/30" : "border-line")}>
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        {name === "createGroup" ? (
+          <GroupAvatar bots={members} size="lg" />
+        ) : (
+          <BotAvatar bot={bot ?? { name: input.name ?? "?", color: "violet", avatar: "" }} size="lg" working={running} />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-medium uppercase tracking-[0.04em] text-faint">{verb}</p>
+          <p className="truncate text-[13.5px] font-semibold">{name === "createGroup" ? input.name : (bot?.name ?? input.newName ?? input.name)}</p>
+          <p className="truncate text-[12px] text-muted">
+            {name === "createGroup"
+              ? members.map((b, i) => b?.name ?? input.members?.[i]).join(", ")
+              : name === "updateBot"
+                ? [input.job, input.status === "paused" ? "Paused" : input.status === "active" ? "Resumed" : ""].filter(Boolean).join(" · ") || "Settings changed"
+                : (input.job ?? bot?.job)}
+          </p>
+        </div>
+        {running ? <Spinner className="size-3.5 text-faint" /> : null}
+      </div>
+      {failed ? (
+        <p className="border-t border-line px-3 py-1.5 text-[12px] text-danger">{part.errorText ?? output}</p>
+      ) : href && !running ? (
+        <Link href={href} className="flex items-center gap-1 border-t border-line px-3 py-1.5 text-[11.5px] text-muted hover:bg-hover hover:text-fg">
+          {name === "createGroup" ? "Open the group" : `Chat with ${bot?.name ?? "it"}`} <ChevronRight className="size-3" />
         </Link>
       ) : null}
     </div>
