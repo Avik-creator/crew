@@ -37,6 +37,7 @@ import { buildSystemPrompt } from "./prompt"
 import { saveMessage } from "./store"
 import { collabTools } from "./tools/collab"
 import { appTools } from "./tools/apps"
+import { browserTools } from "./tools/browser"
 import { computerTools } from "./tools/computer"
 import { loadMemories, memoryTools } from "./tools/memory"
 import { teamTools } from "./tools/team"
@@ -104,6 +105,7 @@ async function driverFor(ctx: Omit<TurnContext, "dispatcher" | "events">): Promi
   return new LazyDriver("cloud", () => getDisplayDriver(ctx.userId, bot.displayNumber), {
     openApp: true,
     saveLogins: true,
+    browser: true,
   })
 }
 
@@ -209,6 +211,7 @@ export async function runTurn(payload: TurnPayload, deps: TurnDeps): Promise<Tur
     const tools = prepareTools({
       ...computerTools(driver),
       ...(driver.apps ? appTools(driver.apps) : {}),
+      ...(driver.browser ? browserTools(driver.browser) : {}),
       ...memoryTools(ctx),
       ...collabTools(ctx, originThreadId),
       ...(bot.role === "chief" ? teamTools(ctx) : {}),

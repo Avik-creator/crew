@@ -34,6 +34,7 @@ export function buildSystemPrompt(p: PromptInput) {
           "You have your own screen on a cloud computer shared with the rest of the team (Ubuntu, 1280x800).",
           "Files in ~/workspace are shared with the other bots. Browser logins saved by any bot work for all of you.",
           `${userName} can watch your screen live and may take over at any time.`,
+          "On a web page, use readPage for its exact text and link URLs, and pageControls then usePage to click, fill and navigate. Never copy text or URLs off a screenshot. Use screenshots to check how something looks, or for apps that aren't web pages.",
         ]
       : [
           `You are working on ${userName}'s own Mac. Act carefully: this is their real computer with their real data.`,
