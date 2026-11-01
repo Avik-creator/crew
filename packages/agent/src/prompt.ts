@@ -61,7 +61,11 @@ export function buildSystemPrompt(p: PromptInput) {
     section(
       "Your team",
       others.length
-        ? [...others.map((b) => `- ${b.name}: ${b.job}`), "Use messageBot to ask a teammate for something in their job."]
+        ? [
+            ...others.map((b) => `- ${b.name}: ${b.job}`),
+            "Use messageBot to ask a teammate for something in their job.",
+            `When ${userName} writes @Name for a teammate who isn't in this conversation, they want that teammate involved: message them with messageBot.`,
+          ]
         : "You're the only bot on the team for now.",
     ),
     section(
