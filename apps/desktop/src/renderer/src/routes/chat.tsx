@@ -161,7 +161,10 @@ export function ChatRoute({ threadId }: { threadId: string }) {
     stick.current = true
     try {
       const res = await send.mutateAsync(msg)
-      queryClient.setQueryData<StoredMessage[]>(keys.messages(threadId), (old) => [...(old ?? []), res.message])
+      queryClient.setQueryData<StoredMessage[]>(keys.messages(threadId), (old) => {
+        const list = old ?? []
+        return list.some((m) => m.id === res.message.id) ? list : [...list, res.message]
+      })
       for (const r of res.runs) liveRuns.add(threadId, r)
       if (!res.runs.length) toast("Nobody's available to answer. Resume a paused bot or add one to the group.")
     } catch (err) {
