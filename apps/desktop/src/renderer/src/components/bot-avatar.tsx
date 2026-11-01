@@ -2,17 +2,47 @@ import type { Bot, BotColor } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 export const BOT_COLORS: Record<BotColor, { bg: string; fg: string; ring: string; hex: string }> = {
-  violet: { bg: "bg-violet-500/15", fg: "text-violet-500", ring: "ring-violet-500/50", hex: "#8b5cf6" },
-  blue: { bg: "bg-blue-500/15", fg: "text-blue-500", ring: "ring-blue-500/50", hex: "#3b82f6" },
-  emerald: { bg: "bg-emerald-500/15", fg: "text-emerald-500", ring: "ring-emerald-500/50", hex: "#10b981" },
-  amber: { bg: "bg-amber-500/15", fg: "text-amber-500", ring: "ring-amber-500/50", hex: "#f59e0b" },
-  rose: { bg: "bg-rose-500/15", fg: "text-rose-500", ring: "ring-rose-500/50", hex: "#f43f5e" },
-  cyan: { bg: "bg-cyan-500/15", fg: "text-cyan-500", ring: "ring-cyan-500/50", hex: "#06b6d4" },
-  orange: { bg: "bg-orange-500/15", fg: "text-orange-500", ring: "ring-orange-500/50", hex: "#f97316" },
-  pink: { bg: "bg-pink-500/15", fg: "text-pink-500", ring: "ring-pink-500/50", hex: "#ec4899" },
+  violet: { bg: "bg-violet-500/15", fg: "text-violet-500 dark:text-violet-400", ring: "ring-violet-500/50", hex: "#8b5cf6" },
+  blue: { bg: "bg-blue-500/15", fg: "text-blue-600 dark:text-blue-400", ring: "ring-blue-500/50", hex: "#3b82f6" },
+  emerald: { bg: "bg-emerald-500/15", fg: "text-emerald-600 dark:text-emerald-400", ring: "ring-emerald-500/50", hex: "#10b981" },
+  amber: { bg: "bg-amber-500/15", fg: "text-amber-600 dark:text-amber-400", ring: "ring-amber-500/50", hex: "#f59e0b" },
+  rose: { bg: "bg-rose-500/15", fg: "text-rose-600 dark:text-rose-400", ring: "ring-rose-500/50", hex: "#f43f5e" },
+  cyan: { bg: "bg-cyan-500/15", fg: "text-cyan-600 dark:text-cyan-400", ring: "ring-cyan-500/50", hex: "#06b6d4" },
+  orange: { bg: "bg-orange-500/15", fg: "text-orange-600 dark:text-orange-400", ring: "ring-orange-500/50", hex: "#f97316" },
+  pink: { bg: "bg-pink-500/15", fg: "text-pink-600 dark:text-pink-400", ring: "ring-pink-500/50", hex: "#ec4899" },
 }
 
-const SIZES = { xs: "size-5 text-[9px]", sm: "size-6 text-[10.5px]", md: "size-8 text-[12px]", lg: "size-11 text-[15px]", xl: "size-16 text-[22px]" }
+export const colorOf = (bot: Pick<Bot, "color"> | undefined) => BOT_COLORS[bot?.color ?? "violet"] ?? BOT_COLORS.violet
+
+const SIZES = {
+  "2xs": "size-3.5",
+  xs: "size-5",
+  sm: "size-6",
+  md: "size-8",
+  lg: "size-10",
+  xl: "size-16",
+} as const
+
+const EMOJI = { "2xs": "text-[8px]", xs: "text-[11px]", sm: "text-[13px]", md: "text-[17px]", lg: "text-[21px]", xl: "text-[34px]" } as const
+
+// Small stable number from the name, so each bot keeps the same look
+const seed = (name: string) => [...name].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7)
+
+// A round face in the bot's color. The gaze shifts with the name, so bots with
+// the same color still look different at a glance.
+function Face({ name }: { name: string }) {
+  const s = seed(name)
+  const dx = ((s % 3) - 1) * 1.1
+  const dy = (((s >> 2) % 3) - 1) * 0.6
+  const tall = (s >> 4) % 2 === 0
+  const h = tall ? 4.4 : 3.6
+  return (
+    <svg viewBox="0 0 24 24" className="size-full" aria-hidden>
+      <rect x={8.1 + dx} y={9.6 + dy - h / 2 + 1.6} width={2.3} height={h} rx={1.15} fill="rgb(0 0 0 / 0.72)" />
+      <rect x={13.6 + dx} y={9.6 + dy - h / 2 + 1.6} width={2.3} height={h} rx={1.15} fill="rgb(0 0 0 / 0.72)" />
+    </svg>
+  )
+}
 
 export function BotAvatar({
   bot,
@@ -25,15 +55,17 @@ export function BotAvatar({
   working?: boolean
   className?: string
 }) {
-  const c = BOT_COLORS[bot?.color ?? "violet"] ?? BOT_COLORS.violet
-  // Tiny avatars fit one letter
-  const label = bot?.avatar || (bot?.name ?? "?").slice(0, size === "xs" || size === "sm" ? 1 : 2)
+  const c = colorOf(bot)
+  const emoji = bot?.avatar
   return (
-    <span className={cn("relative inline-grid shrink-0 place-items-center rounded-full font-semibold", SIZES[size], c.bg, c.fg, className)}>
-      <span className={bot?.avatar ? "text-[1.15em]" : "uppercase"}>{label}</span>
-      {working ? (
-        <span className={cn("absolute -inset-[3px] rounded-full ring-2 animate-pulse-soft", c.ring)} aria-label="working" />
-      ) : null}
+    <span
+      className={cn("relative inline-grid shrink-0 place-items-center rounded-full", SIZES[size], emoji && c.bg, className)}
+      style={emoji ? undefined : { backgroundColor: c.hex }}
+      role="img"
+      aria-label={bot?.name ?? "Bot"}
+    >
+      {emoji ? <span className={cn("leading-none", EMOJI[size])}>{emoji}</span> : <Face name={bot?.name ?? "?"} />}
+      {working ? <span className={cn("absolute -inset-[3px] rounded-full ring-2 animate-pulse-soft", c.ring)} aria-hidden /> : null}
     </span>
   )
 }
@@ -48,6 +80,27 @@ export function AvatarStack({ bots, max = 3, size = "sm" }: { bots: (Bot | undef
       {bots.length > max ? (
         <span className="grid size-6 place-items-center rounded-full bg-raised text-[10px] font-medium text-muted ring-2 ring-bg">+{bots.length - max}</span>
       ) : null}
+    </span>
+  )
+}
+
+// Up to three faces packed into one avatar-sized circle, for group chats
+export function GroupAvatar({ bots, size = "md", className }: { bots: (Bot | undefined)[]; size?: "sm" | "md" | "lg"; className?: string }) {
+  const shown = bots.filter(Boolean).slice(0, 3) as Bot[]
+  const box = { sm: "size-6", md: "size-8", lg: "size-10" }[size]
+  const slots = [
+    "left-0 top-0 w-[62%]",
+    "right-0 bottom-0 w-[62%]",
+    "left-[4%] bottom-0 w-[52%]",
+  ]
+  if (shown.length < 2) return <BotAvatar bot={shown[0]} size={size} className={className} />
+  return (
+    <span className={cn("relative inline-block shrink-0", box, className)} role="img" aria-label={shown.map((b) => b.name).join(", ")}>
+      {shown.map((b, i) => (
+        <span key={b.id} className={cn("absolute aspect-square rounded-full ring-2 ring-bg", slots[i])} style={{ backgroundColor: colorOf(b).hex }}>
+          <Face name={b.name} />
+        </span>
+      ))}
     </span>
   )
 }
