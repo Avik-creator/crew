@@ -30,11 +30,13 @@ export function usePairThread(a: string | undefined, b: string | undefined) {
 }
 
 // A run of work steps folds into one line that names the latest step
-export function ActivityGroup({ parts, live }: { parts: ToolPart[]; live?: boolean }) {
+// working: the turn goes on after these steps, so the group reads as still busy
+export function ActivityGroup({ parts, live, working }: { parts: ToolPart[]; live?: boolean; working?: boolean }) {
   const [open, setOpen] = useState(false)
   if (parts.length === 1) return <ToolRow part={parts[0]!} />
   const last = parts[parts.length - 1]!
-  const running = live && parts.some(isRunning)
+  const toolRunning = live && parts.some(isRunning)
+  const running = toolRunning || working
   const failed = parts.filter((p) => p.state === "output-error").length
   const { text } = describeTool(toolNameOf(last), last.input)
   return (
@@ -47,7 +49,7 @@ export function ActivityGroup({ parts, live }: { parts: ToolPart[]; live?: boole
       >
         <span className="grid size-5 shrink-0 place-items-center rounded-md bg-raised text-[10.5px] font-semibold tabular-nums text-muted">{parts.length}</span>
         <span className="shrink-0 font-medium text-fg/80">{running ? "Working" : "Worked"}</span>
-        <span className="truncate text-faint">· {running ? text : `${parts.length} steps${failed ? `, ${failed} failed` : ""}`}</span>
+        <span className="truncate text-faint">· {toolRunning ? text : `${parts.length} steps${failed ? `, ${failed} failed` : ""}`}</span>
         {running ? <Spinner className="size-3 shrink-0 text-faint" /> : null}
         <ChevronRight className={cn("size-3.5 shrink-0 text-faint transition-transform", open && "rotate-90")} />
       </button>

@@ -82,9 +82,14 @@ function Reasoning({ text, streaming }: { text: string; streaming?: boolean }) {
   )
 }
 
-export function TypingDots({ className }: { className?: string }) {
+// bare: no bubble, for a bot that's busy but hasn't started writing to you
+export function TypingDots({ className, bare }: { className?: string; bare?: boolean }) {
   return (
-    <span className={cn("inline-flex items-center gap-1 rounded-[18px] bg-raised px-3.5 py-3", className)} role="status" aria-label="Typing">
+    <span
+      className={cn("inline-flex items-center gap-1", bare ? "px-1 py-2" : "rounded-[18px] bg-raised px-3.5 py-3", className)}
+      role="status"
+      aria-label={bare ? "Working" : "Typing"}
+    >
       {[0, 1, 2].map((i) => (
         <span key={i} className="size-1.5 rounded-full bg-faint animate-typing" style={{ animationDelay: `${i * 160}ms` }} />
       ))}
@@ -133,7 +138,9 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
   // only finished steps shows them under the steps
   const settled = segments.every((s) => s.kind !== "tools" || s.parts.every((p) => p.state !== "input-streaming" && p.state !== "input-available"))
   const lastSeg = segments[segments.length - 1]
-  const trailingDots = streaming && segments.length > 0 && settled && lastSeg?.kind !== "text" && lastSeg?.kind !== "reasoning"
+  // A run of steps shows "Working" itself; after a single step or an event, quiet dots
+  const workingSteps = streaming && lastSeg?.kind === "tools" && lastSeg.parts.length > 1
+  const trailingDots = streaming && segments.length > 0 && settled && !workingSteps && lastSeg?.kind !== "text" && lastSeg?.kind !== "reasoning"
 
   return (
     <>
@@ -152,7 +159,7 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
               ) : null}
             </div>
           ) : null}
-          {busy ? <TypingDots /> : null}
+          {busy ? <TypingDots bare /> : null}
           <div className={cn("selectable flex w-full flex-col gap-1", mine ? "items-end" : "items-start")}>
             {segments.map((s, i) => {
               switch (s.kind) {
@@ -173,7 +180,7 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
                 case "image":
                   return <img key={i} src={s.url} alt="" className="max-h-72 rounded-[18px] border border-line" />
                 case "tools":
-                  return <ActivityGroup key={i} parts={s.parts} live={streaming} />
+                  return <ActivityGroup key={i} parts={s.parts} live={streaming} working={workingSteps && s === lastSeg} />
                 case "event":
                   return <BotEvent key={i} part={s.part} fromBotId={bot?.id} />
                 case "approval":
@@ -184,7 +191,7 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
                   )
               }
             })}
-            {trailingDots ? <TypingDots className="mt-0.5" /> : null}
+            {trailingDots ? <TypingDots bare /> : null}
           </div>
         </div>
       </div>

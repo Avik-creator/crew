@@ -151,6 +151,10 @@ body {
   outline-offset: 2px;
 }
 
+html[data-pointer] :focus-visible {
+  outline: none;
+}
+
 /* Fields draw their own focus state */
 input:focus-visible,
 textarea:focus-visible,
