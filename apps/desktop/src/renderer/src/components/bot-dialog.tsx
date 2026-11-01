@@ -4,24 +4,24 @@ import { toast } from "sonner"
 import { useLocation } from "wouter"
 
 import { api } from "@/lib/api"
-import { keys, useAction, useConnectors, useDevices } from "@/lib/queries"
+import { keys, useAction, useDevices } from "@/lib/queries"
 import type { Bot, BotColor } from "@/lib/types"
 import { cn, errorMessage } from "@/lib/utils"
 
 import { BOT_COLORS, BotAvatar } from "./bot-avatar"
-import { ConnectorIcon } from "./connector-icon"
 import { Button } from "./ui/button"
 import { Dialog, DialogContent } from "./ui/dialog"
 import { Field, Input, Textarea } from "./ui/input"
 import { Select } from "./ui/select"
 
 const MODELS = [
-  { value: "default", label: "Default (Claude Sonnet 5.5)" },
+  { value: "default", label: "Default (GPT-5.4 nano)" },
+  { value: "gpt-5-4-nano", label: "GPT-5.4 nano" },
+  { value: "gpt-5-5", label: "GPT-5.5" },
+  { value: "gpt-5-mini", label: "GPT-5 mini" },
   { value: "claude-opus-5-5", label: "Claude Opus 5.5 · most capable" },
   { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5 · balanced" },
   { value: "claude-haiku-5-5", label: "Claude Haiku 5.5 · fastest" },
-  { value: "gpt-5-5", label: "GPT-5.5" },
-  { value: "gpt-5-mini", label: "GPT-5 mini" },
 ]
 
 const JOBS = ["Research and writing", "Code and pull requests", "Email and calendar", "Design review", "Data and spreadsheets", "QA and testing"]
@@ -35,7 +35,6 @@ type Draft = {
   model: string
   runsOn: "cloud" | "device"
   deviceId: string | null
-  serverIds: string[]
 }
 
 const empty = (): Draft => ({
@@ -47,15 +46,12 @@ const empty = (): Draft => ({
   model: "default",
   runsOn: "cloud",
   deviceId: null,
-  serverIds: [],
 })
 
 export function BotDialog({ open, onOpenChange, bot }: { open: boolean; onOpenChange: (v: boolean) => void; bot?: Bot }) {
   const [draft, setDraft] = useState<Draft>(empty)
   const [, navigate] = useLocation()
-  const connectors = useConnectors()
   const devices = useDevices()
-  const connected = (connectors.data?.servers ?? []).filter((s) => s.connection?.status === "active")
 
   useEffect(() => {
     if (!open) return
@@ -70,7 +66,6 @@ export function BotDialog({ open, onOpenChange, bot }: { open: boolean; onOpenCh
             model: bot.model ?? "default",
             runsOn: bot.runsOn,
             deviceId: bot.deviceId,
-            serverIds: bot.serverIds,
           }
         : empty(),
     )
@@ -207,33 +202,6 @@ export function BotDialog({ open, onOpenChange, bot }: { open: boolean; onOpenCh
           <Field label="Model">
             <Select value={draft.model} onValueChange={(v) => set("model", v)} options={MODELS} />
           </Field>
-
-          <div>
-            <p className="mb-1.5 text-[12.5px] font-medium">Apps it can use</p>
-            {connected.length ? (
-              <div className="flex flex-wrap gap-2">
-                {connected.map((s) => {
-                  const on = draft.serverIds.includes(s.id)
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => set("serverIds", on ? draft.serverIds.filter((x) => x !== s.id) : [...draft.serverIds, s.id])}
-                      className={cn(
-                        "flex items-center gap-2 rounded-lg border py-1 pl-1 pr-3 text-[12.5px] transition-colors",
-                        on ? "border-accent bg-accent-soft/60 text-fg" : "border-line text-muted hover:bg-hover",
-                      )}
-                    >
-                      <ConnectorIcon icon={s.icon} size="sm" />
-                      {s.name}
-                    </button>
-                  )
-                })}
-              </div>
-            ) : (
-              <p className="text-[12.5px] text-muted">No apps connected yet. Connect GitHub, Gmail and more under Connections.</p>
-            )}
-          </div>
         </div>
       </DialogContent>
     </Dialog>

@@ -1,5 +1,5 @@
 import { createMCPClient, type ListToolsResult, type MCPClient } from "@ai-sdk/mcp"
-import { botServers, connections, db, mcpServers, toolPrefs, type Connection, type McpServer } from "@crew/db"
+import { connections, db, mcpServers, toolPrefs, type Connection, type McpServer } from "@crew/db"
 import { MCP_TOOL_SEPARATOR } from "@crew/shared"
 import type { Tool, ToolApprovalStatus } from "ai"
 import { and, eq } from "drizzle-orm"
@@ -46,8 +46,9 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string) {
 const isAuthError = (err: unknown) =>
   /unauthori[sz]ed|401|invalid_grant|invalid_token|not connected/i.test(err instanceof Error ? err.message : String(err))
 
-// Every connector the bot may use, as AI SDK tools with an approval decision
-// per tool. Connectors that fail are reported, never fatal to the turn.
+// Every active connection on the account, as AI SDK tools with an approval
+// decision per tool. A connection is for every bot. Failures are reported,
+// never fatal to the turn.
 export async function loadConnectorTools(opts: {
   userId: string
   botId: string
@@ -55,13 +56,12 @@ export async function loadConnectorTools(opts: {
   rules?: ApprovalRule[]
   timeoutMs?: number
 }): Promise<ConnectorToolset> {
-  const { userId, botId, background, rules = DEFAULT_RULES, timeoutMs = 25_000 } = opts
+  const { userId, background, rules = DEFAULT_RULES, timeoutMs = 25_000 } = opts
   const rows = await db
     .select({ server: mcpServers, connection: connections })
-    .from(botServers)
-    .innerJoin(mcpServers, eq(mcpServers.id, botServers.serverId))
-    .innerJoin(connections, and(eq(connections.serverId, mcpServers.id), eq(connections.userId, userId)))
-    .where(and(eq(botServers.botId, botId), eq(connections.status, "active")))
+    .from(connections)
+    .innerJoin(mcpServers, eq(mcpServers.id, connections.serverId))
+    .where(and(eq(connections.userId, userId), eq(connections.status, "active")))
   const prefs = await db.select().from(toolPrefs).where(eq(toolPrefs.userId, userId))
   const prefOf = (serverId: string, tool: string) =>
     prefs.find((p) => p.serverId === serverId && p.toolName === tool)?.mode

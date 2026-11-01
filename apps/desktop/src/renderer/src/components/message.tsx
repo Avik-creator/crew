@@ -9,6 +9,7 @@ import { cn, shortTime } from "@/lib/utils"
 
 import { BotAvatar } from "./bot-avatar"
 import { ApprovalCard } from "./inbox-cards"
+import { Spinner } from "./ui/spinner"
 import { ToolRow, type ToolPart } from "./tool-row"
 
 type Author = { kind: "user"; name: string } | { kind: "bot"; bot: Bot | undefined } | { kind: "system" }
@@ -67,6 +68,15 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
 
   const name = author.kind === "user" ? author.name : (author.bot?.name ?? "Bot")
   const lastIndex = parts.length - 1
+  const inProgress = streaming && parts.some((part) => {
+    if (part.type === "text") return part.state === "streaming" && part.text.length > 0
+    if (part.type === "reasoning") return part.state !== "done"
+    if (part.type === "dynamic-tool" || part.type.startsWith("tool-")) {
+      const state = (part as { state?: string }).state
+      return state === "input-streaming" || state === "input-available" || state === "approval-requested" || state === "approval-responded"
+    }
+    return false
+  })
 
   return (
     <div className={cn("group flex gap-3 px-6", grouped ? "pt-0.5" : "pt-4")}>
@@ -120,6 +130,11 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
             }
             return null
           })}
+          {streaming && !inProgress ? (
+            <p className="mt-1 flex items-center gap-2 text-[12.5px] text-faint">
+              <Spinner className="size-3.5" /> Working…
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

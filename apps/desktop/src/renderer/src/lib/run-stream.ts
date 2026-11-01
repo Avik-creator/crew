@@ -2,9 +2,19 @@ import { TRIGGER } from "@crew/shared"
 import { useQuery } from "@tanstack/react-query"
 import { useRealtimeStream } from "@trigger.dev/react-hooks"
 import { readUIMessageStream, type UIMessage, type UIMessageChunk } from "ai"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 
 import { api } from "./api"
+
+function asChunk(part: unknown): UIMessageChunk | null {
+  if (!part || typeof part !== "object") return null
+  const record = part as { type?: unknown; data?: unknown }
+  if (typeof record.type === "string" && record.type !== "part") return part as UIMessageChunk
+  if (record.data && typeof record.data === "object" && typeof (record.data as { type?: unknown }).type === "string") {
+    return record.data as UIMessageChunk
+  }
+  return null
+}
 
 // The reply a bot is writing right now, rebuilt from the run's UI chunks.
 // Chunks arrive through Trigger.dev realtime with a read-only token.
@@ -21,39 +31,28 @@ export function useLiveMessage(triggerRunId: string) {
     baseURL: import.meta.env.RENDERER_VITE_TRIGGER_API_URL,
   })
   const [message, setMessage] = useState<UIMessage | null>(null)
-  const feed = useRef<{ controller: ReadableStreamDefaultController<UIMessageChunk>; sent: number } | null>(null)
 
   useEffect(() => {
-    let controller!: ReadableStreamDefaultController<UIMessageChunk>
-    const stream = new ReadableStream<UIMessageChunk>({ start: (c) => (controller = c) })
-    feed.current = { controller, sent: 0 }
+    const chunks = (parts ?? []).map(asChunk).filter((c): c is UIMessageChunk => c != null)
+    if (!chunks.length) return
     let cancelled = false
+    const stream = new ReadableStream<UIMessageChunk>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(chunk)
+        controller.close()
+      },
+    })
     void (async () => {
+      let latest: UIMessage | null = null
       try {
-        for await (const m of readUIMessageStream({ stream })) if (!cancelled) setMessage(m)
+        for await (const next of readUIMessageStream({ stream })) latest = next
       } catch {
-        // stream ended or was malformed
+        // a bad chunk stops this replay; the next update tries again
       }
+      if (!cancelled && latest) setMessage(latest)
     })()
     return () => {
       cancelled = true
-      try {
-        controller.close()
-      } catch {
-        // already closed
-      }
-    }
-  }, [triggerRunId])
-
-  useEffect(() => {
-    const f = feed.current
-    if (!f || !parts) return
-    for (; f.sent < parts.length; f.sent++) {
-      try {
-        f.controller.enqueue(parts[f.sent]!)
-      } catch {
-        return
-      }
     }
   }, [parts])
 

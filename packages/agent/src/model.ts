@@ -5,7 +5,7 @@ import type { LanguageModel } from "ai"
 // changing this file only; everything else takes a LanguageModel.
 let neon: ReturnType<typeof createNeon> | undefined
 
-export const DEFAULT_MODEL = () => process.env.DEFAULT_MODEL || "claude-sonnet-5-5"
+export const DEFAULT_MODEL = () => process.env.DEFAULT_MODEL || "gpt-5-4-nano"
 export const ROUTER_MODEL = () => process.env.ROUTER_MODEL || "claude-haiku-5-5"
 
 export function languageModel(id?: string | null): LanguageModel {

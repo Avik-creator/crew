@@ -23,19 +23,15 @@ function LiveReply({ run, bot, onMessageId }: { run: ActiveRun; bot: Bot | undef
   const message = useLiveMessage(run.triggerRunId)
   const approvals = useApprovals()
   useEffect(() => onMessageId(message?.id ?? null), [message?.id, onMessageId])
-  if (!message || !message.parts.length) {
-    return (
-      <div className="flex gap-3 px-6 pt-4">
-        <BotAvatar bot={bot} size="md" working />
-        <div className="flex items-center gap-1 pt-2">
-          {[0, 1, 2].map((i) => (
-            <span key={i} className="size-1.5 rounded-full bg-faint animate-pulse-soft" style={{ animationDelay: `${i * 0.18}s` }} />
-          ))}
-        </div>
-      </div>
-    )
-  }
-  return <Message id={message.id} author={{ kind: "bot", bot }} parts={message.parts} streaming approvals={approvals.data} />
+  return (
+    <Message
+      id={message?.id ?? run.triggerRunId}
+      author={{ kind: "bot", bot }}
+      parts={message?.parts ?? []}
+      streaming
+      approvals={approvals.data}
+    />
+  )
 }
 
 function ThreadHeader({ thread, bots, title, onScreen, screenOpen }: { thread: Thread; bots: Bot[]; title: string; onScreen: () => void; screenOpen: boolean }) {
@@ -182,7 +178,11 @@ export function ChatRoute({ threadId }: { threadId: string }) {
   }
 
   const stored = messages.data ?? []
-  const liveMessageIds = new Set(Object.values(liveIds).filter(Boolean) as string[])
+  // A finished run leaves its id in liveIds. Only a run still on screen should hide the saved row.
+  const liveMessageIds = new Set(live.flatMap((r) => {
+    const id = liveIds[r.triggerRunId]
+    return id ? [id] : []
+  }))
 
   return (
     <div className="flex h-full min-w-0 flex-1">
