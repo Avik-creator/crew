@@ -6,6 +6,10 @@ import { useBots } from "@/lib/queries"
 
 import { MentionChip } from "./mention-chip"
 
+// New words fade in as they arrive. Streamdown paces them, so a burst of text
+// reads as a steady flow instead of a jump.
+const FADE_IN = { animation: "fadeIn", duration: 180, sep: "word", maxBacklogMs: 400 } as const
+
 // Message markdown, with "@Name" drawn as a chip for every bot on the team
 export const Markdown = memo(function Markdown({ text, streaming }: { text: string; streaming?: boolean }) {
   const bots = useBots()
@@ -29,7 +33,12 @@ export const Markdown = memo(function Markdown({ text, streaming }: { text: stri
     [team],
   )
   return (
-    <Streamdown isAnimating={streaming} mode={streaming ? "streaming" : "static"} components={components}>
+    <Streamdown
+      isAnimating={streaming}
+      mode={streaming ? "streaming" : "static"}
+      animated={streaming ? FADE_IN : false}
+      components={components}
+    >
       {source}
     </Streamdown>
   )

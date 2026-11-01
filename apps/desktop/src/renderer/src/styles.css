@@ -97,7 +97,9 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-pop-in,
   .animate-pulse-soft,
-  .animate-typing { animation: none; }
+  .animate-typing,
+  [data-sd-animate] { animation: none; }
+  [data-sd-animate-marker]::marker { animation: none; }
 }
 
 html,

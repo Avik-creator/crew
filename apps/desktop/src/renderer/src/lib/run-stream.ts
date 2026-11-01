@@ -2,7 +2,7 @@ import { TRIGGER } from "@crew/shared"
 import { useQuery } from "@tanstack/react-query"
 import { useRealtimeStream } from "@trigger.dev/react-hooks"
 import { readUIMessageStream, type UIMessage, type UIMessageChunk } from "ai"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { api } from "./api"
 
@@ -31,28 +31,48 @@ export function useLiveMessage(triggerRunId: string) {
     baseURL: import.meta.env.RENDERER_VITE_TRIGGER_API_URL,
   })
   const [message, setMessage] = useState<UIMessage | null>(null)
+  const feed = useRef<{ controller: ReadableStreamDefaultController<UIMessageChunk>; seen: number } | null>(null)
 
+  // One reader for the whole run. Each chunk is applied once, and the screen
+  // updates at most once a frame however fast the chunks come.
   useEffect(() => {
-    const chunks = (parts ?? []).map(asChunk).filter((c): c is UIMessageChunk => c != null)
-    if (!chunks.length) return
-    let cancelled = false
+    let frame = 0
+    let latest: UIMessage | null = null
+    let closed = false
     const stream = new ReadableStream<UIMessageChunk>({
       start(controller) {
-        for (const chunk of chunks) controller.enqueue(chunk)
-        controller.close()
+        feed.current = { controller, seen: 0 }
       },
     })
     void (async () => {
-      let latest: UIMessage | null = null
-      try {
-        for await (const next of readUIMessageStream({ stream })) latest = next
-      } catch {
-        // a bad chunk stops this replay; the next update tries again
+      // A bad chunk is skipped (onError), the rest still render
+      for await (const next of readUIMessageStream({ stream, onError: () => {} })) {
+        latest = next
+        frame ||= requestAnimationFrame(() => {
+          frame = 0
+          if (!closed) setMessage(latest)
+        })
       }
-      if (!cancelled && latest) setMessage(latest)
     })()
     return () => {
-      cancelled = true
+      closed = true
+      cancelAnimationFrame(frame)
+      try {
+        feed.current?.controller.close()
+      } catch {
+        // already closed
+      }
+      feed.current = null
+    }
+  }, [triggerRunId])
+
+  // Hand the reader only the chunks it hasn't seen
+  useEffect(() => {
+    const f = feed.current
+    if (!f || !parts) return
+    for (; f.seen < parts.length; f.seen++) {
+      const chunk = asChunk(parts[f.seen])
+      if (chunk) f.controller.enqueue(chunk)
     }
   }, [parts])
 
