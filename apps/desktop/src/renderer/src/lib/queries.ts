@@ -17,9 +17,15 @@ import type {
   Thread,
 } from "./types"
 
-export const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 } },
-})
+// One cache for the app's whole life. In development a hot update re-runs this
+// file; a fresh client then would leave the screen on the old cache while live
+// events write into the new one, and replies would stop showing.
+export const queryClient: QueryClient =
+  import.meta.hot?.data.queryClient ??
+  new QueryClient({
+    defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 } },
+  })
+if (import.meta.hot) import.meta.hot.data.queryClient = queryClient
 
 export const keys = {
   me: ["me"] as const,
