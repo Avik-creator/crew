@@ -149,7 +149,7 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
         <div
           className={cn(
             "flex min-w-0 flex-col gap-1",
-            mine ? "max-w-[min(84%,calc(100%-8rem),39rem)] items-end" : "max-w-[min(88%,calc(100%-8rem),39rem)] items-start",
+            mine ? "max-w-[min(84%,calc(100%-8rem),39rem)] items-end" : "max-w-[min(100%,44rem)] items-start",
           )}
         >
           {named ? (
@@ -170,11 +170,13 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
               switch (s.kind) {
                 case "text":
                   return (
+                    // Your own words sit in a bubble; a bot's reply is plain text on
+                    // the chat background, capped to a comfortable line length
                     <div
                       key={i}
                       className={cn(
-                        "prose-chat max-w-full rounded-[20px] px-[18px] py-3",
-                        mine ? "bubble-mine bg-bubble text-bubble-fg" : "bg-raised text-fg",
+                        "prose-chat",
+                        mine ? "bubble-mine max-w-full rounded-[20px] bg-bubble px-[18px] py-3 text-bubble-fg" : "max-w-[min(100%,70ch)] py-1 text-fg",
                       )}
                     >
                       <Markdown text={s.text} streaming={streaming && s.index === lastText} />
