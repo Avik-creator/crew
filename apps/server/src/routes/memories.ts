@@ -1,10 +1,11 @@
-import { bots, db, memories } from "@crew/db"
+import { db, memories } from "@crew/db"
 import { json } from "../lib/validate"
 import { and, desc, eq, isNull } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
 
 import { notFound, requireUser, type AppEnv } from "../lib/http"
+import { ownBot } from "./bots"
 
 const memorySchema = z.object({
   key: z.string().trim().min(1).max(80),
@@ -34,18 +35,17 @@ export const memoryRoutes = new Hono<AppEnv>()
   .post("/", json(memorySchema), async (c) => {
     const user = c.get("user")
     const input = c.req.valid("json")
-    if (input.botId) {
-      const [b] = await db.select().from(bots).where(and(eq(bots.id, input.botId), eq(bots.userId, user.id)))
-      if (!b) notFound("That bot")
-    }
+    if (input.botId) await ownBot(user.id, input.botId)
     const [row] = await db.insert(memories).values({ ...input, userId: user.id }).returning()
     return c.json(row, 201)
   })
   .patch("/:id", json(memorySchema.partial()), async (c) => {
     const user = c.get("user")
+    const input = c.req.valid("json")
+    if (input.botId) await ownBot(user.id, input.botId)
     const [row] = await db
       .update(memories)
-      .set(c.req.valid("json"))
+      .set(input)
       .where(and(eq(memories.id, c.req.param("id")), eq(memories.userId, user.id)))
       .returning()
     return row ? c.json(row) : notFound("That memory")

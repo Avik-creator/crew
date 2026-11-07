@@ -8,7 +8,7 @@ import { z } from "zod"
 import { notFound, requireUser, type AppEnv } from "../lib/http"
 import { relay } from "../lib/relay"
 
-async function ownDevice(userId: string, id: string) {
+export async function ownDevice(userId: string, id: string) {
   const [d] = await db.select().from(devices).where(and(eq(devices.id, id), eq(devices.userId, userId)))
   return d ?? notFound("That computer")
 }
@@ -42,6 +42,8 @@ export const deviceRoutes = new Hono<AppEnv>()
     const user = c.get("user")
     const d = await ownDevice(user.id, c.req.param("id"))
     await db.delete(devices).where(eq(devices.id, d.id))
+    // An unlinked Mac shouldn't keep taking work over a socket it already opened
+    await relay.drop(d.id)
     return c.body(null, 204)
   })
   .get("/:id/rules", async (c) => {

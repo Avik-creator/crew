@@ -3,7 +3,7 @@ import type { LocalToolName, ScreenshotPayload } from "@crew/shared"
 import type { ActResult, AppAction, AppControl, AppSnapshotOptions, ComputerDriver, DesktopAction } from "./driver"
 import type { ExecResult, FileEntry } from "./provider"
 
-export type DeviceRunContext = { runId: string; botId: string; botName: string; background: boolean }
+export type DeviceRunContext = { userId: string; runId: string; botId: string; botName: string; background: boolean }
 
 export type DeviceInvoke = (
   deviceId: string,

@@ -112,10 +112,14 @@ async function skip(runId: string, reason: string): Promise<TurnResult> {
 async function driverFor(ctx: Omit<TurnContext, "dispatcher" | "events">): Promise<ComputerDriver> {
   const { bot } = ctx
   if (bot.runsOn === "device" && bot.deviceId) {
-    const [device] = await db.select({ capabilities: devices.capabilities }).from(devices).where(eq(devices.id, bot.deviceId))
+    const [device] = await db
+      .select({ capabilities: devices.capabilities })
+      .from(devices)
+      .where(and(eq(devices.id, bot.deviceId), eq(devices.userId, ctx.userId)))
+    if (!device) throw new Error(`${bot.name} works on a computer that isn't linked to your account anymore.`)
     return new DeviceDriver(
       bot.deviceId,
-      { runId: ctx.runId, botId: bot.id, botName: bot.name, background: ctx.background },
+      { userId: ctx.userId, runId: ctx.runId, botId: bot.id, botName: bot.name, background: ctx.background },
       { apps: device?.capabilities.apps ?? false },
     )
   }
