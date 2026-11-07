@@ -1,4 +1,4 @@
-import { saveMessage } from "@crew/agent"
+import { rememberableCommand, saveMessage } from "@crew/agent"
 import { approvals, bots, db, deviceCommandRules, messages, runs, takeovers, toolPrefs } from "@crew/db"
 import { json } from "../lib/validate"
 import { and, desc, eq } from "drizzle-orm"
@@ -76,7 +76,7 @@ export const inboxRoutes = new Hono<AppEnv>()
       }
       if (row.kind === "device" && row.toolName === "bash") {
         const [bot] = await db.select({ deviceId: bots.deviceId }).from(bots).where(eq(bots.id, row.botId))
-        const command = String(row.input.command ?? "").trim()
+        const command = rememberableCommand(String(row.input.command ?? ""))
         if (bot?.deviceId && command) {
           await db.insert(deviceCommandRules).values({ userId: user.id, deviceId: bot.deviceId, pattern: command, mode: "always_allow" })
         }

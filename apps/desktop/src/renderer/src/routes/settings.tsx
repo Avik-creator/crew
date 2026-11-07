@@ -158,9 +158,9 @@ function ThisMac() {
       </div>
       <div className="py-3">
         <p className="text-[13px] font-medium">Command rules</p>
-        <p className="text-[12.5px] text-muted">Commands run only after you approve, unless they match an allow rule. End with * to match a prefix.</p>
+        <p className="text-[12.5px] text-muted">Commands run only after you approve, unless they match an allow rule. End with a space and * to match a command and any arguments, like git *</p>
         <div className="mt-2 flex gap-2">
-          <Input className="h-8 font-mono" placeholder="git status*" value={pattern} onChange={(e) => setPattern(e.target.value)} />
+          <Input className="h-8 font-mono" placeholder="git status *" value={pattern} onChange={(e) => setPattern(e.target.value)} />
           <Button size="sm" disabled={!pattern} onClick={() => addRule.mutate({ pattern, mode: "always_allow" }, { onSuccess: () => setPattern("") })}>Allow</Button>
           <Button size="sm" variant="ghost" disabled={!pattern} onClick={() => addRule.mutate({ pattern, mode: "deny" }, { onSuccess: () => setPattern("") })}>Block</Button>
         </div>
