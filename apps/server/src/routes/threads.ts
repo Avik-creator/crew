@@ -1,6 +1,6 @@
 import { ensureChief, liveReplies, routeGroupMessage, saveMessage } from "@crew/agent"
 import { bots, db, messages, runs, threadMembers, threads } from "@crew/db"
-import { groupInputSchema, sendMessageSchema, type TurnReason } from "@crew/shared"
+import { groupInputSchema, LIMITS, sendMessageSchema, type TurnReason } from "@crew/shared"
 import { json } from "../lib/validate"
 import { and, desc, eq, inArray, lt } from "drizzle-orm"
 import { Hono } from "hono"
@@ -14,6 +14,18 @@ import { runner } from "../lib/runner"
 export async function ownThread(userId: string, threadId: string) {
   const [t] = await db.select().from(threads).where(and(eq(threads.id, threadId), eq(threads.userId, userId)))
   return t ?? notFound("That conversation")
+}
+
+// The distinct ids, once each is one of this person's bots
+async function ownBots(userId: string, botIds: string[]) {
+  const ids = [...new Set(botIds)]
+  const owned = await db
+    .select({ id: bots.id })
+    .from(bots)
+    .where(and(eq(bots.userId, userId), inArray(bots.id, ids)))
+  if (owned.length !== ids.length) notFound("That bot")
+  if (ids.length < LIMITS.groupMinBots) badRequest(`A group needs at least ${LIMITS.groupMinBots} different bots.`)
+  return ids
 }
 
 async function membersOf(threadIds: string[]) {
@@ -56,17 +68,13 @@ export const threadRoutes = new Hono<AppEnv>()
   .post("/groups", json(groupInputSchema), async (c) => {
     const user = c.get("user")
     const input = c.req.valid("json")
-    const owned = await db
-      .select({ id: bots.id })
-      .from(bots)
-      .where(and(eq(bots.userId, user.id), inArray(bots.id, input.botIds)))
-    if (owned.length !== input.botIds.length) badRequest("Some of those bots aren't yours.")
+    const botIds = await ownBots(user.id, input.botIds)
     const thread = await db.transaction(async (tx) => {
       const [t] = await tx.insert(threads).values({ userId: user.id, kind: "group", name: input.name, goal: input.goal }).returning()
-      await tx.insert(threadMembers).values(input.botIds.map((botId) => ({ threadId: t!.id, botId })))
+      await tx.insert(threadMembers).values(botIds.map((botId) => ({ threadId: t!.id, botId })))
       return t!
     })
-    return c.json({ ...thread, botIds: input.botIds, unread: false, working: [], activeRuns: [] }, 201)
+    return c.json({ ...thread, botIds, unread: false, working: [], activeRuns: [] }, 201)
   })
   .get("/:id", async (c) => {
     const user = c.get("user")
@@ -78,11 +86,15 @@ export const threadRoutes = new Hono<AppEnv>()
     const user = c.get("user")
     const thread = await ownThread(user.id, c.req.param("id"))
     const { botIds, ...input } = c.req.valid("json")
-    const [updated] = await db.update(threads).set(input).where(eq(threads.id, thread.id)).returning()
-    if (botIds && thread.kind === "group") {
-      await db.delete(threadMembers).where(eq(threadMembers.threadId, thread.id))
-      await db.insert(threadMembers).values(botIds.map((botId) => ({ threadId: thread.id, botId })))
-    }
+    const members = botIds && thread.kind === "group" ? await ownBots(user.id, botIds) : undefined
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx.update(threads).set(input).where(eq(threads.id, thread.id)).returning()
+      if (members) {
+        await tx.delete(threadMembers).where(eq(threadMembers.threadId, thread.id))
+        await tx.insert(threadMembers).values(members.map((botId) => ({ threadId: thread.id, botId })))
+      }
+      return row
+    })
     publish(user.id, { type: "thread.updated", threadId: thread.id })
     return c.json(updated)
   })

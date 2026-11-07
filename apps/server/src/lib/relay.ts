@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto"
 
-import { db, deviceActions, devices, type McpServer } from "@crew/db"
+import { bots, db, deviceActions, devices, runs, type McpServer } from "@crew/db"
 import { deviceToServerSchema, type LocalToolName, type ServerToDevice } from "@crew/shared"
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import type { WSContext } from "hono/ws"
 
 import { publish } from "./bus"
@@ -12,6 +12,7 @@ type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; time
 type Socket = { ws: WSContext; userId: string }
 
 export type InvokeRequest = {
+  userId: string
   runId: string
   botId: string
   botName: string
@@ -21,7 +22,7 @@ export type InvokeRequest = {
 }
 
 // Long commands get their own timeout; everything else should be quick
-const timeoutFor = (req: InvokeRequest) =>
+const timeoutFor = (req: Pick<InvokeRequest, "tool" | "input">) =>
   req.tool === "bash" ? Math.min(Number(req.input.timeoutMs ?? 120_000), 600_000) + 15_000 : 90_000
 
 // Connects bot turns to the desktop app on someone's Mac.
@@ -55,6 +56,14 @@ export class DeviceRelay {
     }
     await db.update(devices).set({ status: "offline", lastSeenAt: new Date() }).where(eq(devices.id, deviceId))
     publish(current.userId, { type: "device.status", deviceId, status: "offline" })
+  }
+
+  // The device was unlinked: forget its socket and hang up
+  async drop(deviceId: string) {
+    const s = this.sockets.get(deviceId)
+    if (!s) return
+    await this.detach(deviceId, s.ws)
+    s.ws.close(4001, "This computer was unlinked")
   }
 
   private send(deviceId: string, frame: ServerToDevice) {
@@ -115,16 +124,27 @@ export class DeviceRelay {
         return s?.ws.close(frame.error ? 1011 : 1000, frame.error?.slice(0, 120))
       }
       case "kill": {
-        // The person hit the kill switch on their Mac: stop the run everywhere
-        await runner.cancel(frame.runId).catch(() => {})
+        // The person hit the kill switch on their Mac: stop the run everywhere,
+        // as long as it's their run working on this Mac
+        const userId = this.sockets.get(deviceId)?.userId
+        if (!userId) return
+        const [run] = await db
+          .select({ id: runs.id })
+          .from(runs)
+          .innerJoin(bots, eq(bots.id, runs.botId))
+          .where(and(eq(runs.id, frame.runId), eq(runs.userId, userId), eq(bots.deviceId, deviceId)))
+        if (run) await runner.cancel(run.id).catch(() => {})
         return
       }
     }
   }
 
-  invoke(deviceId: string, req: InvokeRequest): Promise<unknown> {
+  invoke(deviceId: string, { userId, ...req }: InvokeRequest): Promise<unknown> {
     const id = randomUUID()
     return new Promise((resolve, reject) => {
+      // A bot only ever works on a Mac its own person linked
+      const owner = this.sockets.get(deviceId)?.userId
+      if (owner && owner !== userId) return reject(new Error("That computer is offline. Open Crew on it to let bots use it."))
       const timer = setTimeout(() => {
         this.pending.delete(id)
         reject(new Error(`${req.tool} took too long on the computer`))

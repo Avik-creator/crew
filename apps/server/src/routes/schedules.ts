@@ -1,5 +1,5 @@
-import { fireSchedule, syncSchedule } from "@crew/agent"
-import { bots, db, schedules } from "@crew/db"
+import { fireSchedule, nextRunAt } from "@crew/agent"
+import { db, schedules } from "@crew/db"
 import { json } from "../lib/validate"
 import { and, desc, eq } from "drizzle-orm"
 import { Hono } from "hono"
@@ -7,6 +7,7 @@ import { z } from "zod"
 
 import { badRequest, notFound, requireUser, type AppEnv } from "../lib/http"
 import { runner } from "../lib/runner"
+import { ownBot } from "./bots"
 
 const scheduleSchema = z
   .object({
@@ -25,9 +26,10 @@ async function ownSchedule(userId: string, id: string) {
   return row ?? notFound("That schedule")
 }
 
-async function sync(row: typeof schedules.$inferSelect) {
+// Reads the cron and time zone before anything is saved
+function firstRun(input: z.infer<typeof scheduleSchema>) {
   try {
-    return await syncSchedule(row)
+    return nextRunAt({ ...input, cron: input.cron ?? null, runAt: input.runAt ?? null })
   } catch (err) {
     badRequest(err instanceof Error ? err.message : "Couldn't save that schedule.")
   }
@@ -42,24 +44,26 @@ export const scheduleRoutes = new Hono<AppEnv>()
   .post("/", json(scheduleSchema), async (c) => {
     const user = c.get("user")
     const input = c.req.valid("json")
-    const [bot] = await db.select().from(bots).where(and(eq(bots.id, input.botId), eq(bots.userId, user.id)))
-    if (!bot) notFound("That bot")
+    await ownBot(user.id, input.botId)
+    const next = firstRun(input)
     const [row] = await db
       .insert(schedules)
-      .values({ ...input, cron: input.cron ?? null, runAt: input.runAt ?? null, userId: user.id })
+      .values({ ...input, cron: input.cron ?? null, runAt: input.runAt ?? null, nextRunAt: next, userId: user.id })
       .returning()
-    return c.json(await sync(row!), 201)
+    return c.json(row, 201)
   })
   .patch("/:id", json(scheduleSchema), async (c) => {
     const user = c.get("user")
     const current = await ownSchedule(user.id, c.req.param("id"))
     const input = c.req.valid("json")
+    await ownBot(user.id, input.botId)
+    const next = firstRun(input)
     const [row] = await db
       .update(schedules)
-      .set({ ...input, cron: input.cron ?? null, runAt: input.runAt ?? null })
+      .set({ ...input, cron: input.cron ?? null, runAt: input.runAt ?? null, nextRunAt: next })
       .where(eq(schedules.id, current.id))
       .returning()
-    return c.json(await sync(row!))
+    return c.json(row)
   })
   .delete("/:id", async (c) => {
     const user = c.get("user")

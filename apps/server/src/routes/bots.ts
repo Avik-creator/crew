@@ -1,19 +1,32 @@
 import { createBot, ensureChief, setBotServers, setChiefDismissed } from "@crew/agent"
-import { botServers, bots, db, threadMembers, threads } from "@crew/db"
+import { botServers, bots, db, mcpServers, threadMembers, threads } from "@crew/db"
 import { getScreenUpstream, releaseDisplay } from "@crew/computer"
 import { botInputSchema } from "@crew/shared"
 import { signToken } from "@crew/shared/node"
 import { json } from "../lib/validate"
-import { and, eq, ne } from "drizzle-orm"
+import { and, eq, inArray, ne, or } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
 
 import { publish } from "../lib/bus"
 import { badRequest, notFound, requireUser, type AppEnv } from "../lib/http"
+import { ownDevice } from "./devices"
 
 export async function ownBot(userId: string, botId: string) {
   const [bot] = await db.select().from(bots).where(and(eq(bots.id, botId), eq(bots.userId, userId)))
   return bot ?? notFound("That bot")
+}
+
+// Built-in connectors, plus custom ones this person added
+async function usableServers(userId: string, serverIds: string[]) {
+  const ids = [...new Set(serverIds)]
+  if (!ids.length) return ids
+  const found = await db
+    .select({ id: mcpServers.id })
+    .from(mcpServers)
+    .where(and(inArray(mcpServers.id, ids), or(eq(mcpServers.isCustom, false), eq(mcpServers.addedByUserId, userId))))
+  if (found.length !== ids.length) notFound("That connector")
+  return ids
 }
 
 const createSchema = botInputSchema.extend({ serverIds: z.array(z.string()).optional().default([]) })
@@ -50,10 +63,12 @@ export const botRoutes = new Hono<AppEnv>()
     const user = c.get("user")
     const { serverIds, ...input } = c.req.valid("json")
     if (input.runsOn === "device" && !input.deviceId) badRequest("Pick which computer this bot works on.")
-    const result = await createBot(user.id, { ...input, serverIds })
+    if (input.deviceId) await ownDevice(user.id, input.deviceId)
+    const servers = await usableServers(user.id, serverIds)
+    const result = await createBot(user.id, { ...input, serverIds: servers })
     // Other windows and devices refresh their sidebar
     publish(user.id, { type: "team.updated" })
-    return c.json({ ...result.bot, serverIds, directThreadId: result.threadId }, 201)
+    return c.json({ ...result.bot, serverIds: servers, directThreadId: result.threadId }, 201)
   })
   // Brings back the chief after the person removed it
   .post("/chief", async (c) => {
@@ -67,8 +82,10 @@ export const botRoutes = new Hono<AppEnv>()
     const user = c.get("user")
     const bot = await ownBot(user.id, c.req.param("id"))
     const { serverIds, ...input } = c.req.valid("json")
+    if (input.deviceId) await ownDevice(user.id, input.deviceId)
+    const servers = serverIds && (await usableServers(user.id, serverIds))
     const [updated] = await db.update(bots).set(input).where(eq(bots.id, bot.id)).returning()
-    if (serverIds) await setBotServers(bot.id, serverIds)
+    if (servers) await setBotServers(bot.id, servers)
     publish(user.id, { type: "team.updated" })
     return c.json(updated)
   })
