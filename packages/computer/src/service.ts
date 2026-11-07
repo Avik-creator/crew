@@ -147,9 +147,11 @@ export async function destroyComputer(userId: string) {
   emit(userId, "none")
 }
 
+// Closes a screen and everything on it. A sleeping computer wakes for this,
+// or the next bot given the same screen number would find the old windows.
 export async function releaseDisplay(userId: string, display: number) {
   const [row] = await db.select().from(computers).where(eq(computers.userId, userId))
-  if (row?.status !== "running") return
+  if (row?.status !== "running" && row?.status !== "paused") return
   const ws = await getWorkstation(userId)
   await ws.removeDisplay(display)
 }
