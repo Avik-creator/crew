@@ -9,7 +9,6 @@ export type AppEvent =
       type: "run.started"
       threadId: string
       runId: string
-      triggerRunId: string
       botId: string
     }
   | {

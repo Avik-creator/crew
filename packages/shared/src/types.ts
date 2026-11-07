@@ -66,7 +66,7 @@ export type TurnReason =
   | "schedule" // a schedule fired
   | "wake" // anything else that wakes it
 
-// One bot turn, as queued to the bot-turn task
+// One bot turn, as queued to the runner
 export type TurnPayload = {
   threadId: string
   botId: string

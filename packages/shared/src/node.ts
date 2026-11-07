@@ -67,18 +67,6 @@ export function serverUrl() {
   return url.replace(/\/$/, "")
 }
 
-// Calls from Trigger tasks to the server's /internal routes
-export async function internalFetch(path: string, init: RequestInit = {}) {
-  const secret = process.env.INTERNAL_API_SECRET
-  if (!secret) throw new Error("INTERNAL_API_SECRET is not set")
-  const res = await fetch(`${serverUrl()}${path}`, {
-    ...init,
-    headers: { "content-type": "application/json", authorization: `Bearer ${secret}`, ...init.headers },
-  })
-  if (!res.ok) throw new Error(`${init.method ?? "GET"} ${path} failed: ${res.status} ${await res.text()}`)
-  return res
-}
-
 // Short-lived signed tokens (first-party MCP calls, device relay sockets,
 // screen tickets). Format: base64url(json).base64url(hmac)
 export function signToken<T extends object>(payload: T, ttlSec: number): string {
