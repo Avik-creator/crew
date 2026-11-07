@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto"
 
-import { cancelRun } from "@crew/agent"
-import { db, deviceActions, devices, runs, type McpServer } from "@crew/db"
+import { db, deviceActions, devices, type McpServer } from "@crew/db"
 import { deviceToServerSchema, type LocalToolName, type ServerToDevice } from "@crew/shared"
 import { eq } from "drizzle-orm"
 import type { WSContext } from "hono/ws"
 
 import { publish } from "./bus"
+import { runner } from "./runner"
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
 type Socket = { ws: WSContext; userId: string }
@@ -24,7 +24,7 @@ export type InvokeRequest = {
 const timeoutFor = (req: InvokeRequest) =>
   req.tool === "bash" ? Math.min(Number(req.input.timeoutMs ?? 120_000), 600_000) + 15_000 : 90_000
 
-// Connects bot turns (running in Trigger) to the desktop app on someone's Mac.
+// Connects bot turns to the desktop app on someone's Mac.
 // The app dials in over a WebSocket; tool calls and MCP frames ride on it.
 export class DeviceRelay {
   private sockets = new Map<string, Socket>()
@@ -116,8 +116,7 @@ export class DeviceRelay {
       }
       case "kill": {
         // The person hit the kill switch on their Mac: stop the run everywhere
-        const [run] = await db.select().from(runs).where(eq(runs.id, frame.runId))
-        if (run?.triggerRunId) await cancelRun(run.triggerRunId).catch(() => {})
+        await runner.cancel(frame.runId).catch(() => {})
         return
       }
     }

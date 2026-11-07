@@ -1,13 +1,15 @@
-import { enqueueTurn, ensureChief, routeGroupMessage, runStreamToken, cancelRun, saveMessage } from "@crew/agent"
+import { ensureChief, liveReplies, routeGroupMessage, saveMessage } from "@crew/agent"
 import { bots, db, messages, runs, threadMembers, threads } from "@crew/db"
 import { groupInputSchema, sendMessageSchema, type TurnReason } from "@crew/shared"
 import { json } from "../lib/validate"
 import { and, desc, eq, inArray, lt } from "drizzle-orm"
 import { Hono } from "hono"
+import { streamSSE } from "hono/streaming"
 import { z } from "zod"
 
 import { publish } from "../lib/bus"
 import { badRequest, notFound, requireUser, type AppEnv } from "../lib/http"
+import { runner } from "../lib/runner"
 
 export async function ownThread(userId: string, threadId: string) {
   const [t] = await db.select().from(threads).where(and(eq(threads.id, threadId), eq(threads.userId, userId)))
@@ -38,7 +40,7 @@ export const threadRoutes = new Hono<AppEnv>()
       .orderBy(desc(threads.lastMessageAt))
     const members = await membersOf(rows.map((t) => t.id))
     const active = await db
-      .select({ threadId: runs.threadId, botId: runs.botId, triggerRunId: runs.triggerRunId })
+      .select({ threadId: runs.threadId, botId: runs.botId, runId: runs.id })
       .from(runs)
       .where(and(eq(runs.userId, user.id), eq(runs.status, "running")))
     return c.json(
@@ -47,9 +49,7 @@ export const threadRoutes = new Hono<AppEnv>()
         botIds: members.filter((m) => m.threadId === t.id).map((m) => m.botId),
         unread: t.lastMessageAt > t.lastReadAt,
         working: active.filter((r) => r.threadId === t.id).map((r) => r.botId),
-        activeRuns: active
-          .filter((r) => r.threadId === t.id && r.triggerRunId)
-          .map((r) => ({ botId: r.botId, triggerRunId: r.triggerRunId! })),
+        activeRuns: active.filter((r) => r.threadId === t.id).map((r) => ({ botId: r.botId, runId: r.runId })),
       })),
     )
   })
@@ -155,7 +155,7 @@ export const threadRoutes = new Hono<AppEnv>()
     }
     const started = await Promise.all(
       botIds.map(async (botId) => {
-        const handle = await enqueueTurn({
+        const runId = await runner.enqueue({
           threadId: thread.id,
           botId,
           reason,
@@ -163,7 +163,7 @@ export const threadRoutes = new Hono<AppEnv>()
           hop: 0,
           triggerMessageId: msg.id,
         })
-        return { botId, triggerRunId: handle.id }
+        return { botId, runId }
       }),
     )
     return c.json({ message: msg, runs: started, routedReason }, 201)
@@ -171,31 +171,40 @@ export const threadRoutes = new Hono<AppEnv>()
 
 export const runRoutes = new Hono<AppEnv>()
   .use(requireUser)
-  // A read-only token for one run's live stream
-  .get("/:triggerRunId/token", async (c) => {
+  // The reply a turn is writing, as AI SDK UI chunks. Each event's id is the
+  // chunk's index, so a reconnecting app picks up where it left off.
+  .get("/:id/stream", async (c) => {
     const user = c.get("user")
-    const triggerRunId = c.req.param("triggerRunId")
-    await assertRunOwner(user.id, triggerRunId)
-    return c.json({ token: await runStreamToken(triggerRunId) })
+    const run = await ownRun(user.id, c.req.param("id"))
+    const lastId = Number(c.req.header("last-event-id") ?? -1)
+    return streamSSE(c, async (stream) => {
+      // Finished long ago: the saved message is all there is
+      if (run.status !== "queued" && run.status !== "running" && !liveReplies.has(run.id)) return
+      // Writes go out in order, and all of them before the stream closes
+      let writing = Promise.resolve()
+      await new Promise<void>((resolve) => {
+        const stop = liveReplies.follow(run.id, Number.isFinite(lastId) ? lastId : -1, {
+          chunk: (chunk, index) => {
+            writing = writing.then(() => stream.writeSSE({ event: "chunk", id: String(index), data: JSON.stringify(chunk) }))
+          },
+          end: resolve,
+        })
+        stream.onAbort(() => {
+          stop()
+          resolve()
+        })
+      })
+      await writing
+    })
   })
-  .post("/:triggerRunId/cancel", async (c) => {
+  .post("/:id/cancel", async (c) => {
     const user = c.get("user")
-    const triggerRunId = c.req.param("triggerRunId")
-    await assertRunOwner(user.id, triggerRunId)
-    await cancelRun(triggerRunId)
+    const run = await ownRun(user.id, c.req.param("id"))
+    await runner.cancel(run.id)
     return c.body(null, 204)
   })
 
-// A run may not have its row yet when the app asks, so fall back to its tags
-async function assertRunOwner(userId: string, triggerRunId: string) {
-  const [row] = await db.select({ userId: runs.userId }).from(runs).where(eq(runs.triggerRunId, triggerRunId))
-  if (row) {
-    if (row.userId !== userId) notFound("That run")
-    return
-  }
-  const { runs: trigger } = await import("@trigger.dev/sdk")
-  const run = await trigger.retrieve(triggerRunId).catch(() => null)
-  const threadTag = run?.tags.find((t) => t.startsWith("thread_"))
-  if (!threadTag) notFound("That run")
-  await ownThread(userId, threadTag.slice("thread_".length))
+async function ownRun(userId: string, runId: string) {
+  const [row] = await db.select().from(runs).where(and(eq(runs.id, runId), eq(runs.userId, userId)))
+  return row ?? notFound("That run")
 }

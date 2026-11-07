@@ -1,4 +1,4 @@
-import { enqueueTurn, saveMessage } from "@crew/agent"
+import { saveMessage } from "@crew/agent"
 import { approvals, bots, db, deviceCommandRules, messages, runs, takeovers, toolPrefs } from "@crew/db"
 import { json } from "../lib/validate"
 import { and, desc, eq } from "drizzle-orm"
@@ -7,6 +7,7 @@ import { z } from "zod"
 
 import { publish } from "../lib/bus"
 import { badRequest, notFound, requireUser, type AppEnv } from "../lib/http"
+import { runner } from "../lib/runner"
 
 type ToolPart = { type: string; state?: string; approval?: { id: string; approved?: boolean; reason?: string } }
 
@@ -88,7 +89,7 @@ export const inboxRoutes = new Hono<AppEnv>()
       const result = await recordDecision(row.threadId, row.toolCallId, approved, reason)
       if (result && !result.stillPending) {
         const [run] = row.runId ? await db.select().from(runs).where(eq(runs.id, row.runId)) : []
-        await enqueueTurn({
+        await runner.enqueue({
           threadId: row.threadId,
           botId: row.botId,
           reason: "approval",
@@ -137,7 +138,7 @@ export const inboxRoutes = new Hono<AppEnv>()
           metadata: { authorType: "user", takeoverId: row.id },
         })
         publish(user.id, { type: "message.created", threadId: row.threadId, messageId: msg.id })
-        await enqueueTurn({ threadId: row.threadId, botId: row.botId, reason: "takeover", chainId: msg.id, hop: 0, triggerMessageId: msg.id })
+        await runner.enqueue({ threadId: row.threadId, botId: row.botId, reason: "takeover", chainId: msg.id, hop: 0, triggerMessageId: msg.id })
       }
       return c.json({ ok: true })
     },

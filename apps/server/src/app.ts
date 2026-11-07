@@ -8,7 +8,6 @@ import { botRoutes } from "./routes/bots"
 import { connectorRoutes, firstPartyMcpRoutes, oauthRoutes } from "./routes/connectors"
 import { deviceRoutes } from "./routes/devices"
 import { inboxRoutes } from "./routes/inbox"
-import { internalRoutes } from "./routes/internal"
 import { memoryRoutes } from "./routes/memories"
 import { scheduleRoutes } from "./routes/schedules"
 import { searchRoutes } from "./routes/search"
@@ -24,7 +23,6 @@ export const app = new Hono()
   .on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw))
   .route("/", oauthRoutes)
   .route("/mcp", firstPartyMcpRoutes)
-  .route("/internal", internalRoutes)
   .route("/internal/devices", deviceMcpRoutes)
   .route("/devices/connect", deviceSocketRoutes)
   .route("/screen", screenRoutes)

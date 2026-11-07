@@ -1,5 +1,5 @@
-import { createBot, ensureChief, removeSchedule, setBotServers, setChiefDismissed } from "@crew/agent"
-import { botServers, bots, db, schedules, threadMembers, threads } from "@crew/db"
+import { createBot, ensureChief, setBotServers, setChiefDismissed } from "@crew/agent"
+import { botServers, bots, db, threadMembers, threads } from "@crew/db"
 import { getScreenUpstream, releaseDisplay } from "@crew/computer"
 import { botInputSchema } from "@crew/shared"
 import { signToken } from "@crew/shared/node"
@@ -82,8 +82,6 @@ export const botRoutes = new Hono<AppEnv>()
       .innerJoin(threadMembers, eq(threadMembers.threadId, threads.id))
       .where(and(eq(threadMembers.botId, bot.id), ne(threads.kind, "group")))
     for (const t of direct) await db.delete(threads).where(eq(threads.id, t.id))
-    // Schedules go with the bot in the database; their Trigger side has to be removed by hand
-    for (const s of await db.select().from(schedules).where(eq(schedules.botId, bot.id))) await removeSchedule(s).catch(() => {})
     await db.delete(bots).where(eq(bots.id, bot.id))
     if (bot.role === "chief") await setChiefDismissed(user.id, true)
     if (bot.runsOn === "cloud") void releaseDisplay(user.id, bot.displayNumber).catch(() => {})

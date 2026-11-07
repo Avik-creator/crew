@@ -1,13 +1,12 @@
-import { removeSchedule, syncSchedule } from "@crew/agent"
+import { fireSchedule, syncSchedule } from "@crew/agent"
 import { bots, db, schedules } from "@crew/db"
-import { TRIGGER } from "@crew/shared"
 import { json } from "../lib/validate"
-import { tasks } from "@trigger.dev/sdk"
 import { and, desc, eq } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
 
 import { badRequest, notFound, requireUser, type AppEnv } from "../lib/http"
+import { runner } from "../lib/runner"
 
 const scheduleSchema = z
   .object({
@@ -28,9 +27,7 @@ async function ownSchedule(userId: string, id: string) {
 
 async function sync(row: typeof schedules.$inferSelect) {
   try {
-    const triggerScheduleId = await syncSchedule(row)
-    const [updated] = await db.update(schedules).set({ triggerScheduleId }).where(eq(schedules.id, row.id)).returning()
-    return updated!
+    return await syncSchedule(row)
   } catch (err) {
     badRequest(err instanceof Error ? err.message : "Couldn't save that schedule.")
   }
@@ -62,18 +59,19 @@ export const scheduleRoutes = new Hono<AppEnv>()
       .set({ ...input, cron: input.cron ?? null, runAt: input.runAt ?? null })
       .where(eq(schedules.id, current.id))
       .returning()
-    return c.json(await sync({ ...row!, triggerScheduleId: current.triggerScheduleId }))
+    return c.json(await sync(row!))
   })
   .delete("/:id", async (c) => {
     const user = c.get("user")
     const row = await ownSchedule(user.id, c.req.param("id"))
-    await removeSchedule(row)
     await db.delete(schedules).where(eq(schedules.id, row.id))
     return c.body(null, 204)
   })
   .post("/:id/run", async (c) => {
     const user = c.get("user")
+    // Runs it now, once; the schedule itself stays as it is
     const row = await ownSchedule(user.id, c.req.param("id"))
-    const handle = await tasks.trigger(TRIGGER.scheduledTurnOnce, { scheduleId: row.id })
-    return c.json({ triggerRunId: handle.id })
+    const fired = await fireSchedule(runner, row)
+    if (!fired) badRequest("That bot is paused, so it can't run now.")
+    return c.json({ runId: fired.runId })
   })
