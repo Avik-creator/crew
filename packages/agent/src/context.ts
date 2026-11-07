@@ -1,10 +1,10 @@
 import type { Bot, Thread } from "@crew/db"
 import type { AppEvent, TurnPayload } from "@crew/shared"
 
-// Queues another bot turn. The Trigger task implements it with tasks.trigger;
+// Queues another bot turn and returns its run id. TurnRunner implements it;
 // tests can collect payloads instead.
 export interface TurnDispatcher {
-  enqueue(payload: TurnPayload): Promise<void>
+  enqueue(payload: TurnPayload): Promise<string>
 }
 
 // Tells the person's open apps that something changed

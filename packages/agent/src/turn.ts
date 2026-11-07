@@ -12,10 +12,11 @@ import {
   userSettings,
   type Bot,
   type Message,
+  type Run,
   type Thread,
 } from "@crew/db"
 import { loadConnectorTools, type ConnectorToolset } from "@crew/mcp"
-import { LIMITS, type CrewMessageMetadata, type TurnPayload } from "@crew/shared"
+import { LIMITS, type CrewMessageMetadata } from "@crew/shared"
 import {
   convertToModelMessages,
   generateId,
@@ -47,11 +48,10 @@ export type TurnDeps = {
   events: EventSink
   // Receives the live UI stream; resolves once it has been fully consumed
   pipe: (stream: ReadableStream<UIMessageChunk>) => Promise<void>
-  triggerRunId?: string
   signal?: AbortSignal
 }
 
-export type TurnResult = { status: "completed" | "waiting" | "skipped" | "failed"; runId?: string; reason?: string }
+export type TurnResult = { status: "completed" | "waiting" | "skipped" | "failed" | "cancelled"; runId?: string; reason?: string }
 
 // Reasons that come from the person and so ignore the daily wake budget
 const PERSON_REASONS = new Set(["chat", "approval", "takeover", "group"])
@@ -82,14 +82,28 @@ function pruneImages(msgs: ModelMessage[]): ModelMessage[] {
     .reverse() as ModelMessage[]
 }
 
-async function wakesToday(botId: string) {
+// Turns this bot started on its own today, not counting this one
+async function wakesToday(botId: string, runId: string) {
   const since = new Date()
   since.setHours(0, 0, 0, 0)
   const rows = await db
     .select({ id: runs.id })
     .from(runs)
-    .where(and(eq(runs.botId, botId), gte(runs.startedAt, since), ne(runs.trigger, "chat")))
+    .where(
+      and(
+        eq(runs.botId, botId),
+        gte(runs.startedAt, since),
+        ne(runs.trigger, "chat"),
+        ne(runs.status, "skipped"),
+        ne(runs.id, runId),
+      ),
+    )
   return rows.length
+}
+
+async function skip(runId: string, reason: string): Promise<TurnResult> {
+  await db.update(runs).set({ status: "skipped", error: reason, completedAt: new Date() }).where(eq(runs.id, runId))
+  return { status: "skipped", runId, reason }
 }
 
 async function driverFor(ctx: Omit<TurnContext, "dispatcher" | "events">): Promise<ComputerDriver> {
@@ -155,33 +169,27 @@ function prepareTools(tools: Record<string, Tool>): Record<string, Tool> {
 }
 
 // One bot turn: read the thread, think and act with tools, stream the reply
-// live, save it, then record approvals and pass answers between bots.
-export async function runTurn(payload: TurnPayload, deps: TurnDeps): Promise<TurnResult> {
-  const [bot] = await db.select().from(bots).where(eq(bots.id, payload.botId))
-  const [thread] = await db.select().from(threads).where(eq(threads.id, payload.threadId))
-  if (!bot || !thread) return { status: "skipped", reason: "Bot or thread was deleted" }
-  if (bot.status !== "active") return { status: "skipped", reason: `${bot.name} is ${bot.status}` }
-  if (payload.hop > LIMITS.maxHops) return { status: "skipped", reason: "Too many hops" }
-  if (!PERSON_REASONS.has(payload.reason) && (await wakesToday(bot.id)) >= bot.wakeBudgetDaily) {
-    return { status: "skipped", reason: `${bot.name} used today's wake budget` }
+// live, save it, then record approvals and pass answers between bots. The
+// runner has already claimed `run`; this records how it ends.
+export async function runTurn(run: Run, deps: TurnDeps): Promise<TurnResult> {
+  const payload = run.payload
+  const runId = run.id
+  if (!payload) return skip(runId, "The run has nothing to do")
+  const [[bot], [thread]] = await Promise.all([
+    db.select().from(bots).where(eq(bots.id, payload.botId)),
+    db.select().from(threads).where(eq(threads.id, payload.threadId)),
+  ])
+  if (!bot || !thread) return skip(runId, "Bot or thread was deleted")
+  if (bot.status !== "active") return skip(runId, `${bot.name} is ${bot.status}`)
+  if (payload.hop > LIMITS.maxHops) return skip(runId, "Too many hops")
+  if (!PERSON_REASONS.has(payload.reason) && (await wakesToday(bot.id, runId)) >= bot.wakeBudgetDaily) {
+    return skip(runId, `${bot.name} used today's wake budget`)
   }
 
-  const [owner] = await db.select({ name: user.name }).from(user).where(eq(user.id, bot.userId))
-  const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, bot.userId))
-  const [run] = await db
-    .insert(runs)
-    .values({
-      userId: bot.userId,
-      botId: bot.id,
-      threadId: thread.id,
-      trigger: payload.reason,
-      status: "running",
-      triggerRunId: deps.triggerRunId,
-      chainId: payload.chainId,
-      hop: payload.hop,
-    })
-    .returning()
-  const runId = run!.id
+  const [[owner], [settings]] = await Promise.all([
+    db.select({ name: user.name }).from(user).where(eq(user.id, bot.userId)),
+    db.select().from(userSettings).where(eq(userSettings.userId, bot.userId)),
+  ])
   const background = payload.background ?? false
   const ctx: TurnContext = {
     userId: bot.userId,
@@ -195,32 +203,24 @@ export async function runTurn(payload: TurnPayload, deps: TurnDeps): Promise<Tur
     events: deps.events,
   }
   const emit = (e: Parameters<EventSink["emit"]>[1]) => deps.events.emit(ctx.userId, e).catch(() => {})
-  if (deps.triggerRunId) {
-    await emit({ type: "run.started", threadId: thread.id, runId, triggerRunId: deps.triggerRunId, botId: bot.id })
-  }
+  await emit({ type: "run.started", threadId: thread.id, runId, botId: bot.id })
 
-  let connectors: ConnectorToolset | undefined
+  // Closed at the end even if something else in setup fails first
+  let connecting: Promise<ConnectorToolset> | undefined
   try {
-    const trigger = payload.triggerMessageId
-      ? (await db.select().from(messages).where(eq(messages.id, payload.triggerMessageId)))[0]
-      : undefined
-    const originThreadId = await originOf(thread, trigger)
-
-    connectors = await loadConnectorTools({ userId: ctx.userId, botId: bot.id, background })
-    const driver = await driverFor(ctx)
-    const tools = prepareTools({
-      ...computerTools(driver),
-      ...(driver.apps ? appTools(driver.apps) : {}),
-      ...(driver.browser ? browserTools(driver.browser) : {}),
-      ...memoryTools(ctx),
-      ...collabTools(ctx, originThreadId),
-      ...(bot.role === "chief" ? teamTools(ctx) : {}),
-      ...connectors.tools,
-    })
-    const builtin = await builtinApproval({ runsOn: bot.runsOn, deviceId: bot.deviceId })
-    const approvalOf = connectors.approval
-
-    const [team, members, memories, history] = await Promise.all([
+    // Everything the turn needs before the model, loaded side by side
+    connecting = loadConnectorTools({ userId: ctx.userId, botId: bot.id, background })
+    const [connectors, driver, builtin, trigger, team, members, memories, history] = await Promise.all([
+      connecting,
+      driverFor(ctx),
+      builtinApproval({ runsOn: bot.runsOn, deviceId: bot.deviceId }),
+      payload.triggerMessageId
+        ? db
+            .select()
+            .from(messages)
+            .where(eq(messages.id, payload.triggerMessageId))
+            .then((rows) => rows[0])
+        : undefined,
       db.select({ id: bots.id, name: bots.name, job: bots.job }).from(bots).where(and(eq(bots.userId, ctx.userId), eq(bots.status, "active"))),
       db
         .select({ id: bots.id, name: bots.name, job: bots.job })
@@ -230,6 +230,18 @@ export async function runTurn(payload: TurnPayload, deps: TurnDeps): Promise<Tur
       loadMemories(ctx.userId, bot.id),
       loadHistory(thread.id, bot.id),
     ])
+    const originThreadId = await originOf(thread, trigger)
+    const tools = prepareTools({
+      ...computerTools(driver),
+      ...(driver.apps ? appTools(driver.apps) : {}),
+      ...(driver.browser ? browserTools(driver.browser) : {}),
+      ...memoryTools(ctx),
+      ...collabTools(ctx, originThreadId),
+      ...(bot.role === "chief" ? teamTools(ctx) : {}),
+      ...connectors.tools,
+    })
+    const approvalOf = connectors.approval
+
     const peer = thread.kind === "bot" ? members.find((m) => m.id !== bot.id) : undefined
     const system = buildSystemPrompt({
       bot,
@@ -299,6 +311,18 @@ export async function runTurn(payload: TurnPayload, deps: TurnDeps): Promise<Tur
     const usage = await Promise.resolve(result.totalUsage).catch(() => undefined)
     const steps = (await Promise.resolve(result.steps).catch(() => [])).length
 
+    // Stopped by the person: the stream ends quietly and what was written so
+    // far is saved, but nothing else follows from it
+    if (deps.signal?.aborted) {
+      await db
+        .update(runs)
+        .set({ status: "cancelled", usage: { inputTokens: usage?.inputTokens, outputTokens: usage?.outputTokens, steps }, completedAt: new Date() })
+        .where(eq(runs.id, runId))
+      await emit({ type: "run.finished", threadId: thread.id, runId, botId: bot.id, status: "cancelled" })
+      await emit({ type: "thread.updated", threadId: thread.id })
+      return { status: "cancelled", runId }
+    }
+
     // Pending approvals become inbox items; the turn resumes once decided
     const pending = ((reply?.parts ?? []) as ToolPart[]).filter((p) => p.state === "approval-requested" && p.approval)
     if (pending.length && reply) {
@@ -307,7 +331,7 @@ export async function runTurn(payload: TurnPayload, deps: TurnDeps): Promise<Tur
         .values(
           pending.map((p) => {
             const name = p.type === "dynamic-tool" ? p.toolName! : p.type.slice(5)
-            const info = connectors!.info[name]
+            const info = connectors.info[name]
             return {
               userId: ctx.userId,
               runId,
@@ -375,7 +399,10 @@ export async function runTurn(payload: TurnPayload, deps: TurnDeps): Promise<Tur
     await emit({ type: "run.finished", threadId: thread.id, runId, botId: bot.id, status: cancelled ? "cancelled" : "failed" })
     return { status: "failed", runId, reason: message }
   } finally {
-    await connectors?.close()
+    await connecting?.then(
+      (connectors) => connectors.close(),
+      () => {},
+    )
   }
 }
 

@@ -5,7 +5,7 @@ import { and, eq, inArray, ne } from "drizzle-orm"
 import { z } from "zod"
 
 import type { TurnContext } from "../context"
-import { syncSchedule } from "../dispatch"
+import { nextRunAt } from "../schedules"
 import { createBot, createGroup, setBotServers } from "../team"
 
 const norm = (s: string) => s.trim().replace(/^@/, "").toLowerCase()
@@ -186,17 +186,15 @@ export function teamTools(ctx: TurnContext): Record<string, Tool> {
         const when = runAt ? new Date(runAt) : null
         if (when && Number.isNaN(when.getTime())) return `"${runAt}" isn't a date I can read.`
         const [settings] = await db.select({ timeZone: userSettings.timeZone }).from(userSettings).where(eq(userSettings.userId, ctx.userId))
-        const [row] = await db
-          .insert(schedules)
-          .values({ userId: ctx.userId, botId: bot.id, name, prompt, cron: cron ?? null, runAt: when, timeZone: settings?.timeZone ?? "UTC" })
-          .returning()
+        const values = { userId: ctx.userId, botId: bot.id, name, prompt, cron: cron ?? null, runAt: when, timeZone: settings?.timeZone ?? "UTC", enabled: true }
+        let next: Date | null
         try {
-          const triggerScheduleId = await syncSchedule(row!)
-          await db.update(schedules).set({ triggerScheduleId }).where(eq(schedules.id, row!.id))
+          next = nextRunAt(values)
         } catch (err) {
-          await db.delete(schedules).where(eq(schedules.id, row!.id))
           return `Couldn't schedule that: ${err instanceof Error ? err.message : String(err)}`
         }
+        if (!next) return "That time has already passed."
+        await db.insert(schedules).values({ ...values, nextRunAt: next })
         await changed()
         return `Scheduled "${name}" for ${bot.name}.`
       },
