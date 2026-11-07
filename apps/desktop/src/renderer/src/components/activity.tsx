@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 
 import { BotAvatar, GroupAvatar } from "./bot-avatar"
 import { MentionChip, MentionList } from "./mention-chip"
-import { describeTool, toolNameOf, ToolRow, type ToolPart } from "./tool-row"
+import { toolNameOf, ToolRow, type ToolPart } from "./tool-row"
 import { Spinner } from "./ui/spinner"
 
 // Tools that talk to people or teammates read as events, not work steps
@@ -29,34 +29,42 @@ export function usePairThread(a: string | undefined, b: string | undefined) {
   return threads.data?.find((t) => t.kind === "bot" && t.botIds.includes(a) && t.botIds.includes(b))
 }
 
-// A run of work steps folds into one line that names the latest step
+// While live only the newest steps show, so a long run doesn't push the reply away
+const LIVE_STEPS = 6
+
+// A run of work steps, after Rakazo's tool disclosure: open while the bot is
+// working, folded to "Done · N steps" once it's finished, unless toggled.
 // working: the turn goes on after these steps, so the group reads as still busy
 export function ActivityGroup({ parts, live, working }: { parts: ToolPart[]; live?: boolean; working?: boolean }) {
-  const [open, setOpen] = useState(false)
+  const [toggled, setToggled] = useState<boolean | null>(null)
   if (parts.length === 1) return <ToolRow part={parts[0]!} />
-  const last = parts[parts.length - 1]!
-  const toolRunning = live && parts.some(isRunning)
-  const running = toolRunning || working
+  const running = (live && parts.some(isRunning)) || !!working
+  const open = toggled ?? running
   const failed = parts.filter((p) => p.state === "output-error").length
-  const { text } = describeTool(toolNameOf(last), last.input)
+  const shown = running && toggled === null ? parts.slice(-LIVE_STEPS) : parts
+  const hidden = parts.length - shown.length
   return (
     <div className="my-0.5">
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => setToggled(!open)}
         aria-expanded={open}
-        className="group flex max-w-full items-center gap-2 rounded-md py-0.5 pr-2 text-left text-[12.5px] text-muted hover:text-fg"
+        className={cn(
+          "flex min-h-6 w-fit items-center gap-1 rounded-md py-0.5 pr-1.5 text-[13px] font-medium transition-colors",
+          running ? "text-fg/75" : "text-muted hover:text-fg/75",
+        )}
       >
-        <span className="grid size-5 shrink-0 place-items-center rounded-md bg-raised text-[10.5px] font-semibold tabular-nums text-muted">{parts.length}</span>
-        <span className="shrink-0 font-medium text-fg/80">{running ? "Working" : "Worked"}</span>
-        <span className="truncate text-faint">· {toolRunning ? text : `${parts.length} steps${failed ? `, ${failed} failed` : ""}`}</span>
-        {running ? <Spinner className="size-3 shrink-0 text-faint" /> : null}
-        <ChevronRight className={cn("size-3.5 shrink-0 text-faint transition-transform", open && "rotate-90")} />
+        <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
+        <span className={cn(running && "animate-pulse-soft")}>{running ? "Working…" : "Done"}</span>
+        <span className="font-normal text-faint">
+          · {parts.length} steps{failed ? `, ${failed} failed` : ""}
+        </span>
       </button>
       {open ? (
-        <div className="ml-2.5 mt-0.5 border-l border-line pl-3">
-          {parts.map((p, i) => (
-            <ToolRow key={p.toolCallId ?? i} part={p} />
+        <div className="ml-[7px] mt-0.5 border-l border-line pl-3">
+          {hidden ? <p className="text-[12px] leading-5 text-faint">+{hidden} earlier steps</p> : null}
+          {shown.map((p, i) => (
+            <ToolRow key={p.toolCallId ?? i} part={p} step />
           ))}
         </div>
       ) : null}
@@ -173,7 +181,7 @@ function TeamEvent({ part }: { part: ToolPart }) {
 // sums them up, so the person sees only who replied.
 export function BotMessagesDivider({ authors }: { authors: (Bot | undefined)[] }) {
   return (
-    <div className="mt-4 mb-1 flex items-center gap-3 px-5 text-[12.5px]">
+    <div className="mt-4 mb-1 flex items-center gap-3 text-[12.5px]">
       <span className="h-px flex-1 bg-line" />
       <span className="flex items-center gap-1.5 px-1">
         <MentionList bots={authors} />

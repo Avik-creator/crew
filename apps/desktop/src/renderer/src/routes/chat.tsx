@@ -20,7 +20,7 @@ import { keys, queryClient, useAction, useApprovals, useBots, useMe, useMessages
 import { useLiveMessage } from "@/lib/run-stream"
 import type { ActiveRun, Bot, StoredMessage, Thread } from "@/lib/types"
 import { useUI } from "@/lib/ui"
-import { cn, errorMessage } from "@/lib/utils"
+import { cn, errorMessage, startsStretch } from "@/lib/utils"
 
 function LiveReply({ run, bot, layout, onMessageId }: { run: ActiveRun; bot: Bot | undefined; layout: ChatLayout; onMessageId: (id: string | null) => void }) {
   const message = useLiveMessage(run.runId)
@@ -93,42 +93,35 @@ function ThreadHeader({
   const remove = useAction(() => api(`/threads/${thread.id}`, { method: "DELETE" }), [keys.threads])
   const removeBot = useAction(() => api(`/bots/${bot!.id}`, { method: "DELETE" }), [keys.bots, keys.threads])
 
-  const subtitle = working
-    ? "Working…"
-    : bot
-      ? bot.status === "paused"
-        ? "Paused"
-        : bot.role === "chief"
-          ? "Your main assistant. Ask it to set up bots and groups."
-          : bot.job
-      : thread.kind === "group"
-        ? bots.map((b) => b.name).join(", ")
-        : "A private thread between bots. You can read along."
+  const floating = "border border-line bg-raised/90 text-fg/75 backdrop-blur transition-colors hover:bg-hover hover:text-fg"
 
+  // Floats over the transcript, after Rakazo: the conversation's name is a pill
+  // that opens the bot panel, and the window drags from a thin strip above it
   return (
-    <header className="drag flex h-[56px] shrink-0 items-center justify-between gap-3 border-b border-line px-4">
-      <div className="no-drag flex min-w-0 items-center gap-2.5">
-        {bot ? (
-          bot.role === "chief" ? <ChiefAvatar bot={bot} working={working} /> : <BotAvatar bot={bot} size="md" working={working} />
-        ) : thread.kind === "group" ? <GroupAvatar bots={bots} size="md" /> : <AvatarStack bots={bots} size="sm" />}
-        <div className="min-w-0">
-          <p className="truncate text-[14.5px] font-semibold leading-tight tracking-[-0.01em]">{title}</p>
-          <p className={cn("truncate text-[12px] leading-tight", working ? "text-accent" : "text-faint")}>{subtitle}</p>
-        </div>
-      </div>
-      <div className="no-drag flex items-center gap-1">
-        {bots.length ? (
-          <Tip label={screenOpen ? "Hide screen" : "Watch the screen"}>
-            <Button size="icon-sm" variant={screenOpen ? "secondary" : "ghost"} onClick={onScreen} aria-label={screenOpen ? "Hide screen" : "Watch the screen"}>
-              <Monitor />
-            </Button>
-          </Tip>
-        ) : null}
+    <header className="pointer-events-none absolute inset-x-0 top-0 z-10 grid grid-cols-[1fr_minmax(0,auto)_1fr] items-center gap-2 px-[22px] py-[13px]">
+      <div className="absolute inset-x-0 top-0 -z-10 h-[76px] bg-linear-to-b from-bg via-bg/80 to-transparent" />
+      <div className="drag pointer-events-auto absolute inset-x-0 top-0 h-3" />
+      <span />
+      <Tip label={screenOpen ? "Hide details" : bots.length ? "Screen and routines" : title}>
+        <button
+          onClick={onScreen}
+          className={cn("no-drag pointer-events-auto flex min-w-0 items-center gap-2 rounded-full py-1 ps-1 pe-3.5", floating, screenOpen && "bg-hover text-fg")}
+          aria-expanded={screenOpen}
+        >
+          {bot ? (
+            bot.role === "chief" ? <ChiefAvatar bot={bot} working={working} /> : <BotAvatar bot={bot} size="sm" working={working} className="size-[26px]" />
+          ) : thread.kind === "group" ? <GroupAvatar bots={bots} size="sm" /> : <AvatarStack bots={bots} size="xs" />}
+          <span className="truncate text-[15px] font-medium text-fg">{title}</span>
+          {working ? <span className="size-1.5 shrink-0 rounded-full bg-working animate-pulse-soft" aria-label="Working" /> : null}
+          {bot?.status === "paused" ? <span className="shrink-0 text-[12px] text-faint">Paused</span> : null}
+        </button>
+      </Tip>
+      <div className="no-drag pointer-events-auto flex items-center justify-end gap-1.5">
         <Menu>
           <MenuTrigger asChild>
-            <Button size="icon-sm" variant="ghost" aria-label="More">
-              <Ellipsis />
-            </Button>
+            <button className={cn("grid size-9 place-items-center rounded-full", floating)} aria-label="More">
+              <Ellipsis className="size-[17px]" strokeWidth={1.6} />
+            </button>
           </MenuTrigger>
           <MenuContent>
             {bot ? (
@@ -187,7 +180,25 @@ export function ChatRoute({ threadId }: { threadId: string }) {
   const approvals = useApprovals()
   const takeovers = useTakeovers()
   const live = useLiveRuns(threadId)
-  const [screen, setScreen] = useState<{ open: boolean; botId?: string; control?: boolean }>({ open: false })
+  // The bot panel stays open or closed per conversation, like Rakazo's right panel
+  const panelKey = `crew:panel:${threadId}`
+  const [screen, setScreenState] = useState<{ open: boolean; botId?: string; control?: boolean }>(() => {
+    try {
+      return { open: localStorage.getItem(panelKey) === "1" }
+    } catch {
+      return { open: false }
+    }
+  })
+  const setScreen = (next: typeof screen | ((s: typeof screen) => typeof screen)) =>
+    setScreenState((s) => {
+      const value = typeof next === "function" ? next(s) : next
+      try {
+        localStorage.setItem(panelKey, value.open ? "1" : "0")
+      } catch {
+        // private storage: the choice just isn't remembered
+      }
+      return value
+    })
   const [liveIds, setLiveIds] = useState<Record<string, string | null>>({})
   const { scrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom({ resize: "smooth", initial: "instant" })
 
@@ -269,7 +280,7 @@ export function ChatRoute({ threadId }: { threadId: string }) {
 
   return (
     <div className="flex h-full min-w-0 flex-1">
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col">
         <ThreadHeader
           thread={thread}
           bots={members}
@@ -280,7 +291,7 @@ export function ChatRoute({ threadId }: { threadId: string }) {
         />
         <div className="relative min-h-0 flex-1">
           <div ref={scrollRef} className="h-full overflow-y-auto">
-            <div ref={contentRef} className={cn("pb-6", !shown.length && !live.length && "h-full")}>
+            <div ref={contentRef} className={cn("pb-12", !shown.length && !live.length && "h-full")}>
               {!shown.length && !live.length ? (
                 <div className="flex h-full items-center justify-center px-6">
                   <div className="max-w-sm text-center">
@@ -309,7 +320,7 @@ export function ChatRoute({ threadId }: { threadId: string }) {
                   </div>
                 </div>
               ) : (
-                <div className="mx-auto max-w-3xl pt-3">
+                <div className="px-[max(1.75rem,calc((100%-60rem)/2))] pt-[72px]">
                   {shown.map((m, i) => {
                     const prev = shown[i - 1]
                     const relayed = relayedOf(m)
@@ -342,7 +353,7 @@ export function ChatRoute({ threadId }: { threadId: string }) {
                           createdAt={m.createdAt}
                           layout={layout}
                           grouped={grouped}
-                          showStamp={gap > 30 * 60_000}
+                          showStamp={startsStretch(m.createdAt, prev?.createdAt)}
                           addressedTo={layout === "bot" || relayed ? byId.get(m.addressedToBotId ?? "") : undefined}
                           approvals={approvals.data}
                         />
@@ -363,7 +374,7 @@ export function ChatRoute({ threadId }: { threadId: string }) {
                     />
                   ))}
                   {pendingTakeovers.map((t) => (
-                    <div key={t.id} className="px-5 pt-2">
+                    <div key={t.id} className="pt-2">
                       <TakeoverCard takeover={t} onOpenScreen={() => setScreen({ open: true, botId: t.botId, control: true })} />
                     </div>
                   ))}
@@ -374,7 +385,7 @@ export function ChatRoute({ threadId }: { threadId: string }) {
           {!isAtBottom ? (
             <button
               onClick={() => void scrollToBottom()}
-              className="absolute bottom-3 left-1/2 grid size-8 -translate-x-1/2 place-items-center rounded-full border border-line bg-panel text-muted shadow-pop transition-colors hover:text-fg animate-fade-in"
+              className="absolute bottom-11 left-1/2 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-line bg-raised/90 text-fg/75 shadow-md backdrop-blur transition-colors hover:bg-hover hover:text-fg animate-fade-in"
               aria-label="Jump to latest"
             >
               <ArrowDown className="size-4" />
@@ -382,7 +393,8 @@ export function ChatRoute({ threadId }: { threadId: string }) {
           ) : null}
         </div>
         {thread.kind !== "bot" ? (
-          <div className="mx-auto w-full max-w-3xl">
+          // Overlaps the transcript a little, so messages scroll under its rounded top
+          <div className="relative z-10 -mt-7 px-[max(1.5rem,calc((100%-60rem)/2))]">
             <Composer
               mentionable={mentionable}
               memberIds={thread.kind === "group" ? thread.botIds : undefined}
@@ -393,7 +405,7 @@ export function ChatRoute({ threadId }: { threadId: string }) {
             />
           </div>
         ) : (
-          <div className="px-4 pb-4 pt-2">
+          <div className="px-[max(1.5rem,calc((100%-60rem)/2))] pb-5 pt-2">
             <p className="mx-auto max-w-3xl rounded-[22px] border border-dashed border-line px-4 py-3 text-center text-[12.5px] text-faint">
               {me.data ? "This is between bots. Message one of them directly to step in." : null}
             </p>

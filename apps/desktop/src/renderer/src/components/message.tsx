@@ -86,7 +86,7 @@ function Reasoning({ text, streaming }: { text: string; streaming?: boolean }) {
 export function TypingDots({ className, bare }: { className?: string; bare?: boolean }) {
   return (
     <span
-      className={cn("inline-flex items-center gap-1", bare ? "px-1 py-2" : "rounded-[18px] bg-raised px-3.5 py-3", className)}
+      className={cn("inline-flex items-center gap-1", bare ? "px-1 py-2" : "rounded-[20px] bg-raised px-[18px] py-[15px]", className)}
       role="status"
       aria-label={bare ? "Working" : "Typing"}
     >
@@ -100,7 +100,7 @@ export function TypingDots({ className, bare }: { className?: string; bare?: boo
 function SystemNote({ text, scheduleName }: { text: string; scheduleName?: string }) {
   if (scheduleName) {
     return (
-      <div className="my-4 flex justify-center px-5">
+      <div className="my-4 flex justify-center">
         <div className="max-w-lg rounded-2xl border border-line px-3.5 py-2.5 text-[12.5px]">
           <p className="flex items-center gap-1.5 font-medium text-muted">
             <CalendarClock className="size-3.5" /> Scheduled · {scheduleName}
@@ -111,7 +111,7 @@ function SystemNote({ text, scheduleName }: { text: string; scheduleName?: strin
     )
   }
   return (
-    <div className="my-4 flex justify-center px-5">
+    <div className="my-4 flex justify-center">
       <p className="flex max-w-xl items-start gap-1.5 rounded-2xl bg-danger/8 px-3 py-1.5 text-[12px] text-danger">
         <TriangleAlert className="mt-0.5 size-3.5 shrink-0" /> <span className="selectable">{text}</span>
       </p>
@@ -144,12 +144,17 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
 
   return (
     <>
-      {showStamp && createdAt ? <p className="mt-6 mb-1 text-center text-[11px] font-medium text-faint">{chatStamp(createdAt)}</p> : null}
-      <div className={cn("flex px-5", mine ? "justify-end" : "justify-start", grouped ? "mt-1" : "mt-3")}>
-        <div className={cn("flex min-w-0 max-w-[min(36rem,85%)] flex-col gap-1", mine ? "items-end" : "items-start")}>
+      {showStamp && createdAt ? <h3 className="my-3 select-none text-center text-[12px] font-normal text-muted">{chatStamp(createdAt)}</h3> : null}
+      <div className={cn("mt-2 flex", mine ? "justify-end" : "justify-start")}>
+        <div
+          className={cn(
+            "flex min-w-0 flex-col gap-1",
+            mine ? "max-w-[min(84%,calc(100%-8rem),39rem)] items-end" : "max-w-[min(88%,calc(100%-8rem),39rem)] items-start",
+          )}
+        >
           {named ? (
-            <div className="mb-0.5 flex items-center gap-1.5 text-[12.5px]">
-              <BotAvatar bot={bot} size="xs" working={streaming} />
+            <div className="mb-1 flex items-center gap-2 text-[13px] tracking-tight">
+              <BotAvatar bot={bot} size="sm" working={streaming} />
               <span className={cn("font-semibold", colorOf(bot).fg)}>{bot?.name ?? "Bot"}</span>
               {addressedTo ? (
                 <>
@@ -168,8 +173,8 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
                     <div
                       key={i}
                       className={cn(
-                        "prose-chat max-w-full rounded-[18px] px-3.5 py-2",
-                        mine ? "bubble-mine bg-fg text-bg" : "bg-raised text-fg",
+                        "prose-chat max-w-full rounded-[20px] px-[18px] py-3",
+                        mine ? "bubble-mine bg-bubble text-bubble-fg" : "bg-raised text-fg",
                       )}
                     >
                       <Markdown text={s.text} streaming={streaming && s.index === lastText} />
@@ -178,7 +183,7 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
                 case "reasoning":
                   return <Reasoning key={i} text={s.text} streaming={streaming && s.index === lastText} />
                 case "image":
-                  return <img key={i} src={s.url} alt="" className="max-h-72 rounded-[18px] border border-line" />
+                  return <img key={i} src={s.url} alt="" className="max-h-72 rounded-[20px] border border-line" />
                 case "tools":
                   return <ActivityGroup key={i} parts={s.parts} live={streaming} working={workingSteps && s === lastSeg} />
                 case "event":

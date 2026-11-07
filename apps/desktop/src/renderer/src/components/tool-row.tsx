@@ -203,7 +203,8 @@ function outputText(output: unknown): string {
   return JSON.stringify(output, null, 2)
 }
 
-export function ToolRow({ part, children }: { part: ToolPart; children?: ReactNode }) {
+// step: one line inside a run of work, marked ✓, ◷ or × instead of an icon
+export function ToolRow({ part, step, children }: { part: ToolPart; step?: boolean; children?: ReactNode }) {
   const [open, setOpen] = useState(false)
   const name = toolNameOf(part)
   const { icon, text } = describeTool(name, part.input)
@@ -214,24 +215,37 @@ export function ToolRow({ part, children }: { part: ToolPart; children?: ReactNo
   const expandable = !!out || (part.input && Object.keys(part.input).length > 0)
 
   return (
-    <div className="my-1">
+    <div className={step ? "" : "my-1"}>
       <button
         type="button"
         onClick={() => expandable && setOpen(!open)}
         className={cn(
-          "group flex max-w-full items-center gap-2 rounded-md py-0.5 pr-2 text-left text-[12.5px] text-muted [&>svg]:size-3.5 [&>svg]:shrink-0",
+          "group flex max-w-full items-center gap-2 rounded-md text-left text-[13px] leading-5 text-muted [&>svg]:size-3.5 [&>svg]:shrink-0",
+          step ? "py-px" : "py-0.5 pr-2",
           expandable && "hover:text-fg",
         )}
       >
-        <span className="grid size-5 shrink-0 place-items-center rounded-md bg-raised text-muted [&_svg]:size-3">{icon}</span>
-        <span className={cn("truncate", denied && "line-through opacity-70")}>{text}</span>
-        {running && part.state !== "approval-requested" ? <Spinner className="size-3 text-faint" /> : null}
-        {part.state === "output-available" ? <Check className="text-ok/80" /> : null}
-        {failed || denied ? <X className="text-danger/80" /> : null}
+        {step ? (
+          <span
+            className={cn(
+              "w-3 shrink-0 text-center text-[12px]",
+              running ? "text-warn animate-pulse-soft" : failed || denied ? "text-danger" : "text-ok",
+            )}
+            aria-hidden
+          >
+            {running ? "◷" : failed || denied ? "×" : "✓"}
+          </span>
+        ) : (
+          <span className="grid size-5 shrink-0 place-items-center rounded-md bg-raised text-muted [&_svg]:size-3">{icon}</span>
+        )}
+        <span className={cn("truncate", step && running && "text-fg", denied && "line-through opacity-70")}>{text}</span>
+        {!step && running && part.state !== "approval-requested" ? <Spinner className="size-3 text-faint" /> : null}
+        {!step && part.state === "output-available" ? <Check className="text-ok/80" /> : null}
+        {!step && (failed || denied) ? <X className="text-danger/80" /> : null}
         {expandable ? <ChevronRight className={cn("text-faint opacity-0 transition group-hover:opacity-100", open && "rotate-90 opacity-100")} /> : null}
       </button>
       {open ? (
-        <div className="selectable ml-7 mt-1 max-h-72 overflow-auto rounded-lg border border-line bg-raised/60 p-2.5 font-mono text-[11.5px] leading-relaxed text-muted">
+        <div className="selectable ml-5 mt-1 mb-1.5 max-h-72 overflow-auto rounded-lg border border-line bg-raised/60 p-2.5 font-mono text-[11.5px] leading-relaxed text-muted">
           {part.input && Object.keys(part.input).length ? <pre className="whitespace-pre-wrap break-all">{JSON.stringify(part.input, null, 2)}</pre> : null}
           {out ? <pre className={cn("mt-2 whitespace-pre-wrap break-all border-t border-line pt-2", failed && "text-danger")}>{out.slice(0, 8000)}</pre> : null}
         </div>

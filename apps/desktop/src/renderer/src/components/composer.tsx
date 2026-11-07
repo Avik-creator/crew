@@ -142,7 +142,7 @@ export function Composer({
     ],
     editorProps: {
       attributes: {
-        class: "composer-input max-h-[200px] min-h-[22px] overflow-y-auto py-[7px] text-[14px] leading-[22px] outline-none selectable",
+        class: "composer-input max-h-[200px] min-h-[22px] overflow-y-auto py-[5px] text-[15px] leading-[22px] outline-none selectable",
         role: "textbox",
         "aria-multiline": "true",
         "aria-autocomplete": "list",
@@ -225,11 +225,11 @@ export function Composer({
   const canSend = !empty && !disabled
 
   return (
-    <div className="px-4 pb-4 pt-2">
+    <div className="pb-5">
       {menu ? <MentionMenu state={menu} memberIds={memberIds} id={menuId} /> : null}
       <div
         className={cn(
-          "rounded-[22px] border border-line bg-panel shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-colors focus-within:border-line-strong",
+          "rounded-[26px] border border-line bg-bg transition-colors focus-within:border-line-strong dark:bg-raised",
           disabled && "opacity-60",
         )}
         onDragOver={(e) => e.preventDefault()}
@@ -254,15 +254,15 @@ export function Composer({
             ))}
           </div>
         ) : null}
-        <div className="flex items-end gap-1 p-1.5">
+        <div className="flex items-end gap-2 py-[9px] ps-3 pe-2.5">
           <Tip label="Add images" side="top">
             <button
               onClick={() => fileRef.current?.click()}
               disabled={disabled || images.length >= MAX_IMAGES}
-              className="grid size-8 shrink-0 place-items-center rounded-full text-muted transition-colors hover:bg-hover hover:text-fg disabled:opacity-40"
+              className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-raised text-muted transition-colors hover:bg-hover hover:text-fg disabled:opacity-40"
               aria-label="Add images"
             >
-              <Plus className="size-[18px]" />
+              <Plus className="size-4" strokeWidth={2} />
             </button>
           </Tip>
           <input
@@ -276,7 +276,7 @@ export function Composer({
               e.target.value = ""
             }}
           />
-          <EditorContent editor={editor} className="min-w-0 flex-1 px-1" />
+          <EditorContent editor={editor} className="min-w-0 flex-1 px-0.5" />
           {mentionable.length ? (
             <Tip label="Mention a bot  @" side="top">
               <button
@@ -289,22 +289,26 @@ export function Composer({
               </button>
             </Tip>
           ) : null}
-          {working && empty ? (
+          {/* While a bot works, Stop sits beside Send: a new message still reaches it */}
+          {working ? (
             <Tip label="Stop" side="top">
-              <button onClick={onStop} className="grid size-8 shrink-0 place-items-center rounded-full bg-fg text-bg transition-opacity hover:opacity-85" aria-label="Stop">
-                <Square className="size-3 fill-current" />
+              <button
+                onClick={onStop}
+                className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-raised text-fg/80 shadow-sm transition-colors hover:bg-hover"
+                aria-label="Stop"
+              >
+                <Square className="size-[11px] fill-current" />
               </button>
             </Tip>
-          ) : (
-            <button
-              onClick={() => void send()}
-              disabled={!canSend}
-              className="grid size-8 shrink-0 place-items-center rounded-full bg-fg text-bg transition-opacity hover:opacity-85 disabled:bg-hover disabled:text-faint"
-              aria-label="Send"
-            >
-              <ArrowUp className="size-4" strokeWidth={2.4} />
-            </button>
-          )}
+          ) : null}
+          <button
+            onClick={() => void send()}
+            disabled={!canSend}
+            className="grid size-8 shrink-0 place-items-center rounded-full bg-fg text-bg transition-[opacity,transform] hover:opacity-85 active:scale-95 disabled:bg-fg/13 disabled:text-fg/30"
+            aria-label="Send"
+          >
+            <ArrowUp className="size-4" strokeWidth={2.2} />
+          </button>
         </div>
       </div>
     </div>
