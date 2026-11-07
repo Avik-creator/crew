@@ -50,6 +50,10 @@ export function registerIpc({ getWindow, agent, updater }: Deps) {
   })
   ipcMain.handle("crew:badge", (_e, count: number) => app.setBadgeCount(count))
 
+  ipcMain.handle("crew:device:install-apps", async () => {
+    await agent.refreshApps(true)
+    return { ...agent.status, allowedPaths: store.get("allowedPaths") ?? [], capabilities: agent.capabilities() }
+  })
   ipcMain.handle("crew:device:status", async () => {
     await agent.refreshApps()
     return { ...agent.status, allowedPaths: store.get("allowedPaths") ?? [], capabilities: agent.capabilities() }

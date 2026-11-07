@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron"
 
-type DeviceStatus = { linked: boolean; online: boolean; name?: string; deviceId?: string; error?: string }
+type DeviceStatus = { linked: boolean; online: boolean; name?: string; deviceId?: string; error?: string; appsError?: string }
 
 const listen = <T>(channel: string, cb: (value: T) => void) => {
   const handler = (_e: IpcRendererEvent, value: T) => cb(value)
@@ -23,6 +23,14 @@ const api = {
   device: {
     status: () =>
       ipcRenderer.invoke("crew:device:status") as Promise<
+        DeviceStatus & {
+          allowedPaths: string[]
+          capabilities: { shell: boolean; files: boolean; screen: boolean; input: boolean; stdioMcp: boolean; apps: boolean }
+        }
+      >,
+    // Downloads agent-desktop now, for when setting it up by itself failed
+    installApps: () =>
+      ipcRenderer.invoke("crew:device:install-apps") as Promise<
         DeviceStatus & {
           allowedPaths: string[]
           capabilities: { shell: boolean; files: boolean; screen: boolean; input: boolean; stdioMcp: boolean; apps: boolean }

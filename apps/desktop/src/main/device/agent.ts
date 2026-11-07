@@ -17,7 +17,7 @@ import WebSocket from "ws"
 
 import { hideOverlay, showOverlay } from "../overlay"
 import { secureStore, serverUrl } from "../store"
-import { apps, findAgentDesktop } from "./apps"
+import { apps, findAgentDesktop, installAgentDesktop } from "./apps"
 import { input } from "./input"
 import { McpSessions } from "./mcp"
 import { assertAllowed, expandHome } from "./paths"
@@ -27,7 +27,7 @@ const run = promisify(execFile)
 const OUTPUT_CAP = 200_000
 
 type Invoke = Extract<ServerToDevice, { type: "invoke" }>
-export type DeviceStatus = { linked: boolean; online: boolean; name?: string; deviceId?: string; error?: string }
+export type DeviceStatus = { linked: boolean; online: boolean; name?: string; deviceId?: string; error?: string; appsError?: string }
 
 function bash(command: string, timeoutMs = 120_000, cwd?: string) {
   return new Promise<{ exitCode: number; stdout: string; stderr: string }>((resolve) => {
@@ -56,7 +56,7 @@ export class DeviceAgent {
   private activeRuns = new Set<string>()
   private mcp = new McpSessions((f) => this.send(f))
   status: DeviceStatus = { linked: false, online: false }
-  // Whether agent-desktop was found; checked when the connection opens
+  // Whether agent-desktop is installed; set up when the connection opens
   private appsReady = false
 
   constructor(private onStatus: (s: DeviceStatus) => void) {}
@@ -78,9 +78,20 @@ export class DeviceAgent {
     }
   }
 
-  // Looks for agent-desktop again and tells the server if that changed
-  async refreshApps() {
-    const ready = !!(await findAgentDesktop())
+  // Looks for agent-desktop, downloading it when asked, and tells the server
+  // if that changed
+  async refreshApps(install = false) {
+    let ready = !!(await findAgentDesktop())
+    if (!ready && install) {
+      ready = await installAgentDesktop().then(
+        () => true,
+        (err: unknown) => {
+          this.setStatus({ appsError: err instanceof Error ? err.message : String(err) })
+          return false
+        },
+      )
+      if (ready) this.setStatus({ appsError: undefined })
+    }
     if (ready === this.appsReady) return ready
     this.appsReady = ready
     this.refreshHello()
@@ -107,7 +118,7 @@ export class DeviceAgent {
         allowedPaths: secureStore().get("allowedPaths") ?? [],
       })
       this.ping = setInterval(() => this.send({ type: "ping" }), 25_000)
-      void this.refreshApps()
+      void this.refreshApps(true)
     })
     ws.on("message", (raw) => void this.onFrame(String(raw)))
     ws.on("unexpected-response", (_req, res) => {

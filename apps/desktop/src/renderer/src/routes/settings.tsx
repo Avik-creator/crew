@@ -39,6 +39,14 @@ function ThisMac() {
   const [pattern, setPattern] = useState("")
   const rules = useRules(state?.deviceId ?? null)
   const refresh = () => void window.crew.device.status().then(setState)
+  const [installing, setInstalling] = useState(false)
+  const install = () => {
+    setInstalling(true)
+    void window.crew.device
+      .installApps()
+      .then(setState)
+      .finally(() => setInstalling(false))
+  }
   useEffect(() => {
     refresh()
     const off = window.crew.device.onStatus(() => refresh())
@@ -107,28 +115,18 @@ function ThisMac() {
         title="App control"
         body={
           state.capabilities.apps
-            ? "agent-desktop is installed. Bots read apps' buttons and fields directly instead of clicking on pixels."
-            : "Optional. Install agent-desktop so bots use apps through their buttons and fields, without moving your mouse."
+            ? "Bots use apps through their buttons and fields, without moving your mouse."
+            : state.appsError
+              ? `Crew couldn't set up agent-desktop: ${state.appsError}`
+              : "Crew is setting up agent-desktop, so bots can use apps through their buttons and fields."
         }
       >
         {state.capabilities.apps ? (
-          <Badge tone="ok">Installed</Badge>
+          <Badge tone="ok">Ready</Badge>
         ) : (
-          <>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                void navigator.clipboard.writeText("npm i -g agent-desktop")
-                toast.success("Copied", { description: "Run it in Terminal, then come back here." })
-              }}
-            >
-              Copy install command
-            </Button>
-            <Button size="sm" onClick={refresh}>
-              Check again
-            </Button>
-          </>
+          <Button size="sm" loading={installing} onClick={install}>
+            {state.appsError ? "Try again" : "Set up now"}
+          </Button>
         )}
       </Row>
       <div className="py-3">
