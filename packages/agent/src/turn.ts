@@ -20,6 +20,7 @@ import { LIMITS, type CrewMessageMetadata } from "@crew/shared"
 import {
   convertToModelMessages,
   generateId,
+  type Experimental_Steering,
   hasToolCall,
   isStepCount,
   streamText,
@@ -49,6 +50,8 @@ export type TurnDeps = {
   // Receives the live UI stream; resolves once it has been fully consumed
   pipe: (stream: ReadableStream<UIMessageChunk>) => Promise<void>
   signal?: AbortSignal
+  // Brings in what the person writes while the turn is working
+  steering?: Experimental_Steering
 }
 
 export type TurnResult = { status: "completed" | "waiting" | "skipped" | "failed" | "cancelled"; runId?: string; reason?: string }
@@ -287,6 +290,7 @@ export async function runTurn(run: Run, deps: TurnDeps): Promise<TurnResult> {
         ...(screenModel && steps.some((s) => s.toolCalls.some((c) => SCREEN_TOOLS.has(c.toolName))) ? { model: screenModel } : {}),
       }),
       abortSignal: deps.signal,
+      experimental_steering: deps.steering,
     })
 
     let saved: Promise<UIMessage> | undefined

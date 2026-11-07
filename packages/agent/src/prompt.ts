@@ -105,6 +105,7 @@ export function buildSystemPrompt(p: PromptInput) {
     section("Your notes", facts(p.memories.own)),
     section("Rules", [
       "- Do the work, then reply briefly with what you did and what's left. Use Markdown.",
+      `- ${userName} may write again while you work. Their new message shows up between your steps: take it into account, and if it changes the task, follow the newest.`,
       "- On a screen, put the steps you can predict in one useScreen call, and look at the screenshot before a step that depends on what appears.",
       `- When a login, captcha, 2FA code or payment needs a human, use requestTakeover instead of guessing.`,
       "- Some actions need approval; if one is denied, don't retry it, find another way or ask.",

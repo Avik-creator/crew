@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto"
 import { hostname } from "node:os"
 
-import { bots, db, runs, type Run } from "@crew/db"
+import { bots, db, messages, runs, type Run } from "@crew/db"
 import type { TurnPayload } from "@crew/shared"
 import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm"
-import type { UIMessageChunk } from "ai"
+import { convertToModelMessages, experimental_createSteering, type Experimental_Steering, type UIMessage, type UIMessageChunk, type UserModelMessage } from "ai"
 
 import type { EventSink, TurnDispatcher } from "./context"
 import { liveReplies } from "./live"
@@ -19,12 +19,33 @@ const SWEEP_MS = 5_000
 
 const leaseEnd = () => new Date(Date.now() + LEASE_MS)
 
+// What the person wrote, which can reach a turn that is already working
+const STEERABLE = new Set<TurnPayload["reason"]>(["chat", "group"])
+
+type ActiveTurn = {
+  controller: AbortController
+  botId: string
+  threadId: string | null
+  steering: Experimental_Steering
+  // Messages sent to this turn that it hasn't taken or turned down yet
+  steers: Set<(queueIt: boolean) => void>
+}
+
+// The person's saved message as the model reads it, pictures included
+async function steeringMessage(messageId: string): Promise<UserModelMessage | null> {
+  const [row] = await db.select({ parts: messages.parts }).from(messages).where(eq(messages.id, messageId))
+  if (!row) return null
+  const parts = (row.parts as UIMessage["parts"]).filter((p) => p.type === "text" || p.type === "file")
+  const [message] = await convertToModelMessages([{ role: "user", parts }])
+  return message?.role === "user" ? message : null
+}
+
 // Runs bot turns in this process. A turn is a row in `runs`: queued, claimed
 // under a per-bot lock so each bot does one thing at a time, kept alive by a
 // heartbeat, and started by the sweep if a start was missed.
 export class TurnRunner implements TurnDispatcher {
   readonly owner = `${hostname()}:${process.pid}:${randomUUID().slice(0, 8)}`
-  private active = new Map<string, AbortController>()
+  private active = new Map<string, ActiveTurn>()
   private sweeper: NodeJS.Timeout | undefined
   private stopping = false
 
@@ -35,8 +56,13 @@ export class TurnRunner implements TurnDispatcher {
     void this.sweep().catch((err) => console.error("Run sweep failed:", err))
   }
 
-  // Queues a turn and starts it now if the bot is free. Returns the run id.
+  // Queues a turn and starts it now if the bot is free. Returns the run id:
+  // the running turn's, when the message went to that turn instead.
   async enqueue(payload: TurnPayload): Promise<string> {
+    return this.steer(payload) ?? this.queue(payload)
+  }
+
+  private async queue(payload: TurnPayload): Promise<string> {
     const [bot] = await db.select({ userId: bots.userId }).from(bots).where(eq(bots.id, payload.botId))
     if (!bot) throw new Error("That bot no longer exists")
     const [row] = await db
@@ -56,10 +82,40 @@ export class TurnRunner implements TurnDispatcher {
     return row!.id
   }
 
+  // The person wrote where this bot is already working: the message joins that
+  // turn at its next step instead of waiting for it to end. A message the turn
+  // doesn't take, because it ended first, gets a turn of its own. One sent to a
+  // turn the person stopped is dropped with it.
+  private steer(payload: TurnPayload): string | null {
+    if (!STEERABLE.has(payload.reason) || !payload.triggerMessageId) return null
+    const found = [...this.active].find(([, t]) => t.botId === payload.botId && t.threadId === payload.threadId)
+    if (!found) return null
+    const [runId, turn] = found
+    let open = true
+    const settle = (queueIt: boolean) => {
+      if (!open) return
+      open = false
+      turn.steers.delete(settle)
+      if (queueIt) void this.queue(payload).catch((err) => console.error("Couldn't queue a turn:", err))
+    }
+    turn.steers.add(settle)
+    void (async () => {
+      const message = await steeringMessage(payload.triggerMessageId!)
+      if (!open) return
+      if (!message) return settle(false)
+      const outcome = await turn.steering.steer(message, { id: payload.triggerMessageId! })
+      settle(outcome.type === "not-delivered" && outcome.reason !== "aborted")
+    })().catch((err) => {
+      console.error("Couldn't pass a message to a running turn:", err)
+      settle(true)
+    })
+    return runId
+  }
+
   // Stops a turn that's running here, or drops one still waiting its turn
   async cancel(runId: string) {
     const local = this.active.get(runId)
-    if (local) return local.abort()
+    if (local) return local.controller.abort()
     const [run] = await db
       .update(runs)
       .set({ status: "cancelled", completedAt: new Date() })
@@ -123,7 +179,8 @@ export class TurnRunner implements TurnDispatcher {
 
   private async execute(run: Run) {
     const controller = new AbortController()
-    this.active.set(run.id, controller)
+    const turn: ActiveTurn = { controller, botId: run.botId, threadId: run.threadId, steering: experimental_createSteering(), steers: new Set() }
+    this.active.set(run.id, turn)
     const heartbeat = setInterval(() => void this.renew(run.id, controller), HEARTBEAT_MS)
     let crash: unknown
     try {
@@ -131,6 +188,7 @@ export class TurnRunner implements TurnDispatcher {
         dispatcher: this,
         events: this.events,
         signal: controller.signal,
+        steering: turn.steering,
         pipe: (stream) => this.pipe(run.id, stream),
       })
     } catch (err) {
@@ -140,6 +198,8 @@ export class TurnRunner implements TurnDispatcher {
       clearInterval(heartbeat)
       this.active.delete(run.id)
       liveReplies.end(run.id)
+      // A turn that stopped before the model ran never answers for its messages
+      for (const settle of [...turn.steers]) settle(!controller.signal.aborted)
     }
     if (this.stopping) return
     // A turn that threw before it could record how it ended
