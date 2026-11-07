@@ -29,6 +29,15 @@
   --color-bubble-fg: var(--bubble-fg);
   --color-working: var(--working);
 
+  /* shadcn names Streamdown's own controls use (code and table headers,
+     menus, full-screen views), pointed at our tokens */
+  --color-background: var(--panel);
+  --color-foreground: var(--fg);
+  --color-border: var(--line);
+  --color-muted-foreground: var(--muted);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-fg);
+
   --radius-xl: 12px;
   --shadow-pop: 0 10px 28px -8px rgb(0 0 0 / 0.22), 0 0 0 0.5px var(--line-strong);
 
@@ -172,6 +181,13 @@ textarea:focus-visible,
   outline: none;
 }
 
+/* Streamdown's bg-muted means a surface, but our muted is a text color.
+   Remap it in the markdown and in the full-screen views it portals to body. */
+.sd-theme,
+[data-streamdown$="-fullscreen"] {
+  --color-muted: var(--raised);
+}
+
 /* Markdown in messages, sized like Rakazo's chat: 15/22 with roomy blocks */
 .prose-chat {
   font-size: 15px;
@@ -205,7 +221,8 @@ textarea:focus-visible,
   text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
   text-underline-offset: 2px;
 }
-.prose-chat.bg-bubble a:not([data-mention]) {
+.prose-chat.bg-bubble a:not([data-mention]),
+.prose-chat.bg-bubble [data-streamdown="link"] {
   color: inherit;
 }
 .prose-chat code:not(pre code) {
