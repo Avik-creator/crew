@@ -16,8 +16,8 @@ export function stripImages(parts: unknown[]): unknown[] {
   return (parts as AnyPart[]).map((p) => {
     const name = toolNameOf(p)
     if (!name || !SCREEN_TOOLS.has(name) || !p.output || typeof p.output !== "object") return p
-    const { width, height, mediaType } = p.output as { width?: number; height?: number; mediaType?: string }
-    return { ...p, output: { width, height, mediaType, screenshot: "omitted" } }
+    const { base64: _image, ...rest } = p.output as { base64?: string }
+    return { ...p, output: { ...rest, screenshot: "omitted" } }
   })
 }
 

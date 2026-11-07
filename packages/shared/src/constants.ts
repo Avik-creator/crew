@@ -1,7 +1,7 @@
 // Limits that keep bots from looping, flooding or running forever. One place,
 // so the server and the app agree on them.
 export const LIMITS = {
-  // Steps the model may take in one turn; desktop work is one small action per step
+  // Steps the model may take in one turn; one screen step can hold several actions
   maxStepsPerTurn: 50,
   // How many times a chain of bot-to-bot messages or in-group handoffs may bounce
   maxHops: 6,

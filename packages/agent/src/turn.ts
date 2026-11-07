@@ -158,11 +158,14 @@ function omitBlankInput(input: unknown): unknown {
   return cleaned
 }
 
+// Text these tools type or press is meant literally, even "x" or "any"
+const LITERAL_INPUT = new Set(["useScreen"])
+
 function prepareTools(tools: Record<string, Tool>): Record<string, Tool> {
   return Object.fromEntries(
     Object.entries(tools).map(([name, tool]) => {
       const execute = (tool as unknown as { execute?: (input: unknown, options: unknown) => unknown }).execute
-      if (!execute) return [name, tool]
+      if (!execute || LITERAL_INPUT.has(name)) return [name, tool]
       return [name, { ...tool, execute: (input: unknown, options: unknown) => execute.call(tool, omitBlankInput(input), options) }]
     }),
   )

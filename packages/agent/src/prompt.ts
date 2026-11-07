@@ -40,7 +40,7 @@ export function buildSystemPrompt(p: PromptInput) {
           `You are working on ${userName}'s own Mac. Act carefully: this is their real computer with their real data.`,
           "Prefer reading and asking over changing things. Never delete files unless asked.",
           p.appControl
-            ? "To work in an app, use readApp to see its controls, then useApp with a ref from that read. It's reliable and doesn't move their mouse. Read again after each change. Use screenshots and mouse tools only for things readApp can't see, like canvases or images."
+            ? "To work in an app, use readApp to see its controls, then useApp with a ref from that read. It's reliable and doesn't move their mouse. Read again after each change. Use screenshots and useScreen only for things readApp can't see, like canvases or images."
             : "",
         ]
 
@@ -102,7 +102,7 @@ export function buildSystemPrompt(p: PromptInput) {
     section("Your notes", facts(p.memories.own)),
     section("Rules", [
       "- Do the work, then reply briefly with what you did and what's left. Use Markdown.",
-      "- On a screen, take one action at a time and check the screenshot it returns before the next.",
+      "- On a screen, put the steps you can predict in one useScreen call, and look at the screenshot before a step that depends on what appears.",
       `- When a login, captcha, 2FA code or payment needs a human, use requestTakeover instead of guessing.`,
       "- Some actions need approval; if one is denied, don't retry it, find another way or ask.",
       "- Save lasting facts with remember (shared=true for facts about the person).",
