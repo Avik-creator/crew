@@ -1,7 +1,7 @@
 import { saveMessage } from "@crew/agent"
 import { approvals, bots, db, deviceCommandRules, messages, runs, takeovers, toolPrefs } from "@crew/db"
 import { json } from "../lib/validate"
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { z } from "zod"
 
@@ -11,25 +11,25 @@ import { runner } from "../lib/runner"
 
 type ToolPart = { type: string; state?: string; approval?: { id: string; approved?: boolean; reason?: string } }
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
 // Writes the decision into the stored tool part, the way the AI SDK expects
-// to find it when the next turn continues the message
-async function recordDecision(threadId: string, approvalId: string, approved: boolean, reason?: string) {
-  const rows = await db
-    .select()
+// to find it when the next turn continues the message. The row lock makes
+// decisions on the same reply take turns, so exactly one sees nothing pending.
+async function recordDecision(tx: Tx, threadId: string, approvalId: string, approved: boolean, reason?: string) {
+  const [m] = await tx
+    .select({ id: messages.id, parts: messages.parts })
     .from(messages)
-    .where(eq(messages.threadId, threadId))
-    .orderBy(desc(messages.createdAt))
-    .limit(20)
-  for (const m of rows) {
-    const parts = m.parts as ToolPart[]
-    const i = parts.findIndex((p) => p.state === "approval-requested" && p.approval?.id === approvalId)
-    if (i === -1) continue
-    parts[i] = { ...parts[i]!, state: "approval-responded", approval: { id: approvalId, approved, reason } }
-    await db.update(messages).set({ parts }).where(eq(messages.id, m.id))
-    const stillPending = parts.some((p) => p.state === "approval-requested")
-    return { messageId: m.id, stillPending }
-  }
-  return null
+    .where(and(eq(messages.threadId, threadId), sql`${messages.parts} @> ${JSON.stringify([{ approval: { id: approvalId } }])}::jsonb`))
+    .for("update")
+  if (!m) return null
+  const parts = m.parts as ToolPart[]
+  const i = parts.findIndex((p) => p.state === "approval-requested" && p.approval?.id === approvalId)
+  if (i === -1) return null
+  parts[i] = { ...parts[i]!, state: "approval-responded", approval: { id: approvalId, approved, reason } }
+  await tx.update(messages).set({ parts }).where(eq(messages.id, m.id))
+  const stillPending = parts.some((p) => p.state === "approval-requested")
+  return { messageId: m.id, stillPending }
 }
 
 const decideSchema = z.object({
@@ -63,10 +63,18 @@ export const inboxRoutes = new Hono<AppEnv>()
     if (row.status !== "pending") badRequest("That request was already decided.")
     if (remember && row.hard) badRequest("This action always needs your OK.")
 
-    await db
-      .update(approvals)
-      .set({ status: approved ? "approved" : "denied", remember, decidedAt: new Date() })
-      .where(eq(approvals.id, row.id))
+    // Only the first decision wins; the record and the decision commit together
+    const decision = await db.transaction(async (tx) => {
+      const [won] = await tx
+        .update(approvals)
+        .set({ status: approved ? "approved" : "denied", remember, decidedAt: new Date() })
+        .where(and(eq(approvals.id, row.id), eq(approvals.userId, user.id), eq(approvals.status, "pending")))
+        .returning({ id: approvals.id })
+      if (!won) return null
+      const result = row.threadId && row.toolCallId ? await recordDecision(tx, row.threadId, row.toolCallId, approved, reason) : null
+      return { result }
+    })
+    if (!decision) badRequest("That request was already decided.")
     if (approved && remember) {
       if (row.kind === "mcp" && row.serverId) {
         await db
@@ -85,11 +93,11 @@ export const inboxRoutes = new Hono<AppEnv>()
     publish(user.id, { type: "approval.resolved", approvalId: row.id })
 
     // Continue the bot once every request from that reply is decided
-    if (row.threadId && row.toolCallId) {
-      const result = await recordDecision(row.threadId, row.toolCallId, approved, reason)
+    const { result } = decision
+    if (row.threadId && result) {
       // The reply now carries the decision; the app refreshes just that message
-      if (result) publish(user.id, { type: "message.created", threadId: row.threadId, messageId: result.messageId })
-      if (result && !result.stillPending) {
+      publish(user.id, { type: "message.created", threadId: row.threadId, messageId: result.messageId })
+      if (!result.stillPending) {
         const [run] = row.runId ? await db.select().from(runs).where(eq(runs.id, row.runId)) : []
         await runner.enqueue({
           threadId: row.threadId,
@@ -124,7 +132,12 @@ export const inboxRoutes = new Hono<AppEnv>()
         .where(and(eq(takeovers.id, c.req.param("id")), eq(takeovers.userId, user.id)))
       if (!row) notFound("That request")
       if (row.status !== "pending") badRequest("Already handled.")
-      await db.update(takeovers).set({ status, note, decidedAt: new Date() }).where(eq(takeovers.id, row.id))
+      const [won] = await db
+        .update(takeovers)
+        .set({ status, note, decidedAt: new Date() })
+        .where(and(eq(takeovers.id, row.id), eq(takeovers.userId, user.id), eq(takeovers.status, "pending")))
+        .returning({ id: takeovers.id })
+      if (!won) badRequest("Already handled.")
       publish(user.id, { type: "takeover.resolved", takeoverId: row.id })
       if (row.threadId) {
         const text =
