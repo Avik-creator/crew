@@ -87,6 +87,8 @@ export const inboxRoutes = new Hono<AppEnv>()
     // Continue the bot once every request from that reply is decided
     if (row.threadId && row.toolCallId) {
       const result = await recordDecision(row.threadId, row.toolCallId, approved, reason)
+      // The reply now carries the decision; the app refreshes just that message
+      if (result) publish(user.id, { type: "message.created", threadId: row.threadId, messageId: result.messageId })
       if (result && !result.stillPending) {
         const [run] = row.runId ? await db.select().from(runs).where(eq(runs.id, row.runId)) : []
         await runner.enqueue({

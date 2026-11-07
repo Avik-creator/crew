@@ -3,19 +3,20 @@ import { fetchEventSource } from "@microsoft/fetch-event-source"
 
 import { serverBase, sessionToken } from "./api"
 import { liveRuns } from "./live"
-import { keys, queryClient } from "./queries"
+import { keys, messagesPulled, pullMessages, queryClient } from "./queries"
 
 const invalidate = (key: readonly unknown[]) => void queryClient.invalidateQueries({ queryKey: key })
 
 function handle(event: AppEvent) {
   switch (event.type) {
     case "message.created":
-      invalidate(keys.messages(event.threadId))
+      // Only the new message comes down, not the whole chat again
+      void pullMessages(event.threadId, [event.messageId])
       invalidate(keys.threads)
       return
     case "thread.updated":
       invalidate(keys.threads)
-      invalidate(keys.messages(event.threadId))
+      if (event.cleared) invalidate(keys.messages(event.threadId))
       return
     case "team.updated":
       invalidate(keys.bots)
@@ -27,10 +28,9 @@ function handle(event: AppEvent) {
       invalidate(keys.threads)
       return
     case "run.finished":
-      // The live reply stays until the saved one is loaded, so it never blinks out
-      void queryClient
-        .invalidateQueries({ queryKey: keys.messages(event.threadId) })
-        .finally(() => liveRuns.remove(event.threadId, event.runId))
+      // The live reply stays until the saved one is in, so it never blinks out.
+      // Its message.created came first, so waiting on the pulls is enough.
+      void messagesPulled(event.threadId).finally(() => liveRuns.remove(event.threadId, event.runId))
       invalidate(keys.threads)
       return
     case "approval.requested":
@@ -59,10 +59,20 @@ function handle(event: AppEvent) {
 // One live connection per window; reconnects on its own
 export function connectEvents() {
   const ctrl = new AbortController()
+  let opened = false
   void fetchEventSource(`${serverBase()}/events`, {
     headers: { authorization: `Bearer ${sessionToken()}` },
     signal: ctrl.signal,
     openWhenHidden: true,
+    async onopen(res) {
+      if (!res.ok) throw new Error(`events: ${res.status}`)
+      // Events sent while the connection was down are lost: reload what they'd have changed
+      if (opened) {
+        invalidate(["messages"])
+        invalidate(keys.threads)
+      }
+      opened = true
+    },
     onmessage(msg) {
       if (msg.event !== "app") return
       try {

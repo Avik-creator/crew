@@ -31,7 +31,7 @@ function InputPreview({ input }: { input: Record<string, unknown> }) {
 export function ApprovalCard({ approval, compact }: { approval: Approval; compact?: boolean }) {
   const decide = useAction(
     (body: { approved: boolean; remember?: boolean }) => api(`/inbox/approvals/${approval.id}`, { body }),
-    [keys.approvals, keys.messages(approval.threadId ?? "")],
+    [keys.approvals],
   )
   const run = (approved: boolean, remember = false) =>
     decide.mutate({ approved, remember }, { onError: (err) => toast.error(errorMessage(err)) })

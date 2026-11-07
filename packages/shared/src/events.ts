@@ -1,9 +1,11 @@
 // Pushed to the desktop app over one SSE stream per user, so it can refresh
 // what changed without polling. Payloads stay small: the app refetches details.
 export type AppEvent =
-  | { type: "thread.updated"; threadId: string }
+  // cleared: its messages are gone, so the app drops what it has of them
+  | { type: "thread.updated"; threadId: string; cleared?: boolean }
   // Bots or groups were added, changed or removed (e.g. by the chief)
   | { type: "team.updated" }
+  // Also sent when a saved message changes, e.g. a reply that continues after an approval
   | { type: "message.created"; threadId: string; messageId: string; botId?: string | null }
   | {
       type: "run.started"

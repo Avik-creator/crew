@@ -98,7 +98,7 @@ export const threadRoutes = new Hono<AppEnv>()
     const thread = await ownThread(user.id, c.req.param("id"))
     await db.delete(messages).where(eq(messages.threadId, thread.id))
     await db.update(threads).set({ lastMessagePreview: "" }).where(eq(threads.id, thread.id))
-    publish(user.id, { type: "thread.updated", threadId: thread.id })
+    publish(user.id, { type: "thread.updated", threadId: thread.id, cleared: true })
     return c.body(null, 204)
   })
   .post("/:id/read", async (c) => {
@@ -110,14 +110,22 @@ export const threadRoutes = new Hono<AppEnv>()
   .get("/:id/messages", async (c) => {
     const user = c.get("user")
     const thread = await ownThread(user.id, c.req.param("id"))
+    // ids: just these messages, for the app to add or refresh the ones an event named
+    const ids = c.req.query("ids")?.split(",").filter(Boolean).slice(0, 50)
     const before = c.req.query("before")
     const limit = Math.min(Number(c.req.query("limit") ?? 50), 200)
     const rows = await db
       .select()
       .from(messages)
-      .where(and(eq(messages.threadId, thread.id), before ? lt(messages.createdAt, new Date(before)) : undefined))
+      .where(
+        and(
+          eq(messages.threadId, thread.id),
+          ids ? inArray(messages.id, ids) : undefined,
+          before ? lt(messages.createdAt, new Date(before)) : undefined,
+        ),
+      )
       .orderBy(desc(messages.createdAt))
-      .limit(limit)
+      .limit(ids ? ids.length : limit)
     return c.json(rows.reverse())
   })
   // The person writes: save the message, then start the bots that should answer

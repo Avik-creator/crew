@@ -1,5 +1,5 @@
 import { ArrowDown, Ellipsis, Eraser, Monitor, Pause, Pencil, Play, Trash, Users } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useStickToBottom } from "use-stick-to-bottom"
 import { toast } from "sonner"
 import { useLocation } from "wouter"
@@ -16,7 +16,7 @@ import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/compo
 import { EmptyState, Tip } from "@/components/ui/misc"
 import { api } from "@/lib/api"
 import { liveRuns, useLiveRuns } from "@/lib/live"
-import { keys, queryClient, useAction, useApprovals, useBots, useMe, useMessages, useTakeovers, useThreads } from "@/lib/queries"
+import { editNewestMessages, keys, queryClient, useAction, useApprovals, useBots, useMe, useMessages, useTakeovers, useThreads } from "@/lib/queries"
 import { useLiveMessage } from "@/lib/run-stream"
 import type { ActiveRun, Bot, StoredMessage, Thread } from "@/lib/types"
 import { useUI } from "@/lib/ui"
@@ -200,7 +200,20 @@ export function ChatRoute({ threadId }: { threadId: string }) {
       return value
     })
   const [liveIds, setLiveIds] = useState<Record<string, string | null>>({})
+  // The transcript mounts once its messages are in, so its first size is the
+  // whole chat and the jump to the bottom is instant
   const { scrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom({ resize: "smooth", initial: "instant" })
+  // The message row at the top of the view while older ones load, and where it was
+  const anchor = useRef<{ id: string; top: number } | null>(null)
+  // Before the first paint, so the chat never shows its top on the way down
+  const opened = useRef(false)
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current
+    if (opened.current || messages.isPending || !scroller) return
+    opened.current = true
+    scroller.scrollTop = scroller.scrollHeight
+    // The list of chats may arrive after the messages, and the scroller with it
+  }, [messages.isPending, scrollRef, threads.data])
 
   const thread = threads.data?.find((t) => t.id === threadId)
   const byId = useMemo(() => new Map((bots.data ?? []).map((b) => [b.id, b])), [bots.data])
@@ -228,7 +241,6 @@ export function ChatRoute({ threadId }: { threadId: string }) {
 
   // Your message shows the moment you send it; the saved copy replaces it
   const onSend = async (msg: ComposerSend) => {
-    const key = keys.messages(threadId)
     const draft: StoredMessage = {
       id: `draft-${crypto.randomUUID()}`,
       threadId,
@@ -243,22 +255,40 @@ export function ChatRoute({ threadId }: { threadId: string }) {
       createdAt: new Date().toISOString(),
     }
     // A refetch already in flight would land without the draft and blink it away
-    await queryClient.cancelQueries({ queryKey: key })
-    queryClient.setQueryData<StoredMessage[]>(key, (old) => [...(old ?? []), draft])
+    await queryClient.cancelQueries({ queryKey: keys.messages(threadId) })
+    editNewestMessages(threadId, (list) => [...list, draft])
     void scrollToBottom()
     try {
       const res = await send.mutateAsync(msg)
-      queryClient.setQueryData<StoredMessage[]>(key, (old) => {
-        const list = (old ?? []).filter((m) => m.id !== draft.id)
+      editNewestMessages(threadId, (old) => {
+        const list = old.filter((m) => m.id !== draft.id)
         return list.some((m) => m.id === res.message.id) ? list : [...list, res.message]
       })
       for (const r of res.runs) liveRuns.add(threadId, r)
       if (!res.runs.length) toast("Nobody's available to answer. Resume a paused bot or add one to the group.")
     } catch (err) {
-      queryClient.setQueryData<StoredMessage[]>(key, (old) => (old ?? []).filter((m) => m.id !== draft.id))
+      editNewestMessages(threadId, (list) => list.filter((m) => m.id !== draft.id))
       toast.error(errorMessage(err))
     }
   }
+
+  // Older messages go in above without moving what you're reading
+  const loadEarlier = () => {
+    const scroller = scrollRef.current
+    if (!scroller) return
+    const top = scroller.getBoundingClientRect().top
+    const row = [...scroller.querySelectorAll<HTMLElement>("[data-message-id]")].find((r) => r.getBoundingClientRect().bottom > top)
+    anchor.current = row ? { id: row.dataset.messageId ?? "", top: row.getBoundingClientRect().top } : null
+    void messages.fetchNextPage()
+  }
+  useLayoutEffect(() => {
+    const was = anchor.current
+    const scroller = scrollRef.current
+    if (!was || !scroller || messages.isFetchingNextPage) return
+    anchor.current = null
+    const row = scroller.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(was.id)}"]`)
+    if (row) scroller.scrollTop += row.getBoundingClientRect().top - was.top
+  }, [messages.data, messages.isFetchingNextPage, scrollRef])
 
   const stop = async () => {
     await Promise.all(live.map((r) => api(`/runs/${r.runId}/cancel`, { method: "POST" }).catch(() => {})))
@@ -277,6 +307,8 @@ export function ChatRoute({ threadId }: { threadId: string }) {
   }))
   const shown = stored.filter((m) => !liveMessageIds.has(m.id))
   const relayedOf = (m: StoredMessage | undefined) => (m?.metadata as { via?: string } | null)?.via === "bot_message"
+  // Until the messages are in, the chat shows nothing rather than looking new
+  const empty = !messages.isPending && !messages.isError && !shown.length && !live.length
 
   return (
     <div className="flex h-full min-w-0 flex-1">
@@ -290,97 +322,113 @@ export function ChatRoute({ threadId }: { threadId: string }) {
           onScreen={() => setScreen((s) => ({ open: !s.open, botId: s.botId }))}
         />
         <div className="relative min-h-0 flex-1">
-          <div ref={scrollRef} className="h-full overflow-y-auto">
-            <div ref={contentRef} className={cn("pb-12", !shown.length && !live.length && "h-full")}>
-              {!shown.length && !live.length ? (
-                <div className="flex h-full items-center justify-center px-6">
-                  <div className="max-w-sm text-center">
-                    {thread.kind === "direct" && members[0]?.role === "chief" ? (
-                      <ChiefIntro bot={members[0]} onPick={(text) => void onSend({ text, mentionBotIds: [], images: [] })} />
-                    ) : thread.kind === "direct" && members[0] ? (
-                      <>
-                        <BotAvatar bot={members[0]} size="xl" className="mx-auto" />
-                        <h2 className="mt-4 text-[17px] font-semibold tracking-[-0.01em]">{members[0].name}</h2>
-                        <p className="mt-1 text-[13px] text-muted">{members[0].job}</p>
-                        <p className="mt-5 text-[12.5px] leading-relaxed text-faint">
-                          Ask for something. It works on its own screen, uses the apps you connected, and can bring in a teammate when you type @.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <span className="inline-flex justify-center">
-                          {thread.kind === "group" ? <GroupAvatar bots={members} size="lg" className="size-16" /> : <AvatarStack bots={members} max={6} size="md" />}
-                        </span>
-                        <h2 className="mt-4 text-[17px] font-semibold tracking-[-0.01em]">{title}</h2>
-                        <p className="mt-1 text-[13px] text-muted">
-                          {thread.kind === "group" ? "Write to the group and the right bot answers. Type @ to pick one." : "These two haven't messaged each other yet."}
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="px-[max(1.75rem,calc((100%-60rem)/2))] pt-[72px]">
-                  {shown.map((m, i) => {
-                    const prev = shown[i - 1]
-                    const relayed = relayedOf(m)
-                    const gap = prev ? new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() : Infinity
-                    const grouped =
-                      !!prev && prev.authorType === m.authorType && prev.authorId === m.authorId && m.authorType !== "system" &&
-                      relayedOf(prev) === relayed && gap < 5 * 60_000
-                    // Answers relayed from other bots are for the bot that asked, which
-                    // sums them up. The person sees one line naming who replied.
-                    if (relayed && layout !== "bot") {
-                      if (relayedOf(prev)) return null
-                      const run: StoredMessage[] = []
-                      for (let j = i; j < shown.length && relayedOf(shown[j]); j++) run.push(shown[j]!)
-                      const authors = [...new Set(run.map((r) => r.authorId ?? ""))].map((id) => byId.get(id))
-                      return <BotMessagesDivider key={m.id} authors={authors} />
-                    }
-                    const author =
-                      m.authorType === "user"
-                        ? ({ kind: "user", name: "You" } as const)
-                        : m.authorType === "bot"
-                          ? ({ kind: "bot", bot: byId.get(m.authorId ?? "") } as const)
-                          : ({ kind: "system" } as const)
-                    return (
-                      <div key={m.id}>
-                        <Message
-                          id={m.id}
-                          author={author}
-                          parts={m.parts}
-                          metadata={m.metadata}
-                          createdAt={m.createdAt}
-                          layout={layout}
-                          grouped={grouped}
-                          showStamp={startsStretch(m.createdAt, prev?.createdAt)}
-                          addressedTo={layout === "bot" || relayed ? byId.get(m.addressedToBotId ?? "") : undefined}
-                          approvals={approvals.data}
-                        />
-                      </div>
-                    )
-                  })}
-                  {send.isPending && !live.length ? (
-                    // Typing dots while the bot is being started, so the wait starts right away
-                    <Message id="pending" author={{ kind: "bot", bot: thread.kind === "direct" ? members[0] : undefined }} parts={[]} streaming layout="direct" />
-                  ) : null}
-                  {live.map((r) => (
-                    <LiveReply
-                      key={r.runId}
-                      run={r}
-                      bot={byId.get(r.botId)}
-                      layout={layout}
-                      onMessageId={(id) => setLiveIds((s) => (s[r.runId] === id ? s : { ...s, [r.runId]: id }))}
-                    />
-                  ))}
-                  {pendingTakeovers.map((t) => (
-                    <div key={t.id} className="pt-2">
-                      <TakeoverCard takeover={t} onOpenScreen={() => setScreen({ open: true, botId: t.botId, control: true })} />
+          <div ref={scrollRef} className="h-full overflow-y-auto [overflow-anchor:none]">
+            {messages.isPending ? null : messages.isError && !shown.length ? (
+              <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-[13px] text-muted">
+                Couldn't load this conversation.
+                <Button variant="outline" size="sm" onClick={() => void messages.refetch()}>
+                  Try again
+                </Button>
+              </div>
+            ) : (
+              <div ref={contentRef} className={cn("pb-12", empty && "h-full")}>
+                {empty ? (
+                  <div className="flex h-full items-center justify-center px-6">
+                    <div className="max-w-sm text-center">
+                      {thread.kind === "direct" && members[0]?.role === "chief" ? (
+                        <ChiefIntro bot={members[0]} onPick={(text) => void onSend({ text, mentionBotIds: [], images: [] })} />
+                      ) : thread.kind === "direct" && members[0] ? (
+                        <>
+                          <BotAvatar bot={members[0]} size="xl" className="mx-auto" />
+                          <h2 className="mt-4 text-[17px] font-semibold tracking-[-0.01em]">{members[0].name}</h2>
+                          <p className="mt-1 text-[13px] text-muted">{members[0].job}</p>
+                          <p className="mt-5 text-[12.5px] leading-relaxed text-faint">
+                            Ask for something. It works on its own screen, uses the apps you connected, and can bring in a teammate when you type @.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <span className="inline-flex justify-center">
+                            {thread.kind === "group" ? <GroupAvatar bots={members} size="lg" className="size-16" /> : <AvatarStack bots={members} max={6} size="md" />}
+                          </span>
+                          <h2 className="mt-4 text-[17px] font-semibold tracking-[-0.01em]">{title}</h2>
+                          <p className="mt-1 text-[13px] text-muted">
+                            {thread.kind === "group" ? "Write to the group and the right bot answers. Type @ to pick one." : "These two haven't messaged each other yet."}
+                          </p>
+                        </>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                  </div>
+                ) : (
+                  <div className="px-[max(1.75rem,calc((100%-60rem)/2))] pt-[72px]">
+                    {messages.hasNextPage ? (
+                      <div className="flex justify-center pb-2">
+                        <Button variant="ghost" size="sm" loading={messages.isFetchingNextPage} onClick={loadEarlier}>
+                          Load earlier messages
+                        </Button>
+                      </div>
+                    ) : null}
+                    {shown.map((m, i) => {
+                      const prev = shown[i - 1]
+                      const relayed = relayedOf(m)
+                      const gap = prev ? new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() : Infinity
+                      const grouped =
+                        !!prev && prev.authorType === m.authorType && prev.authorId === m.authorId && m.authorType !== "system" &&
+                        relayedOf(prev) === relayed && gap < 5 * 60_000
+                      // Answers relayed from other bots are for the bot that asked, which
+                      // sums them up. The person sees one line naming who replied.
+                      if (relayed && layout !== "bot") {
+                        if (relayedOf(prev)) return null
+                        const run: StoredMessage[] = []
+                        for (let j = i; j < shown.length && relayedOf(shown[j]); j++) run.push(shown[j]!)
+                        const authors = [...new Set(run.map((r) => r.authorId ?? ""))].map((id) => byId.get(id))
+                        return <BotMessagesDivider key={m.id} authors={authors} />
+                      }
+                      const author =
+                        m.authorType === "user"
+                          ? ({ kind: "user", name: "You" } as const)
+                          : m.authorType === "bot"
+                            ? ({ kind: "bot", bot: byId.get(m.authorId ?? "") } as const)
+                            : ({ kind: "system" } as const)
+                      return (
+                        <div key={m.id} data-message-id={m.id}>
+                          <Message
+                            id={m.id}
+                            author={author}
+                            parts={m.parts}
+                            metadata={m.metadata}
+                            createdAt={m.createdAt}
+                            layout={layout}
+                            grouped={grouped}
+                            showStamp={startsStretch(m.createdAt, prev?.createdAt)}
+                            addressedTo={layout === "bot" || relayed ? byId.get(m.addressedToBotId ?? "") : undefined}
+                            approvals={approvals.data}
+                          />
+                        </div>
+                      )
+                    })}
+                    {send.isPending && !live.length ? (
+                      // Typing dots while the bot is being started, so the wait starts right away
+                      <Message id="pending" author={{ kind: "bot", bot: thread.kind === "direct" ? members[0] : undefined }} parts={[]} streaming layout="direct" />
+                    ) : null}
+                    {live.map((r) => (
+                      <LiveReply
+                        key={r.runId}
+                        run={r}
+                        bot={byId.get(r.botId)}
+                        layout={layout}
+                        onMessageId={(id) => setLiveIds((s) => (s[r.runId] === id ? s : { ...s, [r.runId]: id }))}
+                      />
+                    ))}
+                    {pendingTakeovers.map((t) => (
+                      <div key={t.id} className="pt-2">
+                        <TakeoverCard takeover={t} onOpenScreen={() => setScreen({ open: true, botId: t.botId, control: true })} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           {!isAtBottom ? (
             <button

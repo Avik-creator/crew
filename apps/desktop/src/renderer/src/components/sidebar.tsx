@@ -2,7 +2,7 @@ import { Bell, Bot as BotIcon, Brain, CalendarClock, ChevronDown, LogOut, Plug, 
 import { useState, type ReactNode } from "react"
 import { Link, useLocation } from "wouter"
 
-import { useApprovals, useBots, useMe, useTakeovers, useThreads } from "@/lib/queries"
+import { prefetchMessages, useApprovals, useBots, useMe, useTakeovers, useThreads } from "@/lib/queries"
 import type { Bot, Thread } from "@/lib/types"
 import { useUI } from "@/lib/ui"
 import { cn, shortTime } from "@/lib/utils"
@@ -63,6 +63,9 @@ function ThreadItem({ thread, label, avatar, placeholder }: { thread: Thread; la
   return (
     <Link
       href={`/t/${thread.id}`}
+      // Most of the load happens between pointing at a chat and clicking it
+      onPointerEnter={() => prefetchMessages(thread.id)}
+      onFocus={() => prefetchMessages(thread.id)}
       className={cn("flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 transition-colors", active ? "bg-hover" : "hover:bg-fg/[0.05]")}
     >
       {avatar}
