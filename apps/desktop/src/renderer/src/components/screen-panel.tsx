@@ -69,7 +69,9 @@ function CloudScreen({ bot, control, compact, className }: { bot: Bot; control: 
 
   return (
     <div className={cn("relative overflow-hidden rounded-xl border border-line bg-black/90", className)}>
-      <div ref={ref} className={cn("absolute inset-0 [&_canvas]:!cursor-default", control && "[&_canvas]:!cursor-auto")} />
+      {/* noVNC stops every click on its canvas, even view-only. Without control the
+          canvas lets clicks through, so the preview around it can open the large view. */}
+      <div ref={ref} className={cn("absolute inset-0 [&_canvas]:!cursor-default", control ? "[&_canvas]:!cursor-auto" : "pointer-events-none")} />
       {state.kind !== "live" ? (
         <div className="absolute inset-0 grid place-items-center bg-panel/90 text-center">
           <div className="max-w-xs px-6">
