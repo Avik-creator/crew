@@ -14,6 +14,7 @@ It is a learning build of how a Grok Bot-style teammate works on the inside. The
 
 - Read the thread and reply, including while you watch the text and the tool calls stream in.
 - Use a 1280×800 screen on the shared cloud computer: browser, shell, and files. Or use this Mac, with command rules and a kill shortcut (`⌘⇧Esc`).
+- Work desktop apps through their buttons and fields instead of guessing pixels. The bot reads an app's controls from the accessibility tree and acts on them by ref, on the cloud screen and on the Mac. Screenshots and clicks by position are kept for things with no controls, like canvases.
 - Call the apps you connect. An active connection is available to every bot on the account. Tools that write can ask first.
 - Message another bot. That exchange lives in its own thread, which you can read. In your chat you see who replied, and the bot that asked sums up the answer.
 - Take a turn in a group. An @mention picks the bot. Otherwise a small router model does.

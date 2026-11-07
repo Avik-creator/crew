@@ -740,7 +740,9 @@ Every app goes through the generic MCP layer. Which tier depends on what exists 
 ### 10.2 Tool sets
 | Set | Tools |
 |---|---|
-| Computer | `bash`, `readFile`, `writeFile`, `listFiles`, `mouseClick`, `mouseMove`, `mouseDrag`, `mouseScroll`, `keyboardType`, `keyboardPress`, `viewScreen`, `showScreen`, `browserOpen` (same names in local mode, backed by `DeviceDriver`; local mode adds `openApp`) |
+| Computer | `bash`, `readFile`, `writeFile`, `listFiles`, `viewScreen`, `useScreen` (up to 12 mouse and keyboard actions, one screenshot), `openUrl`, `openApp` (same names in local mode, backed by `DeviceDriver`) |
+| Apps | `listApps`, `readApp`, `useApp` (up to 8 actions by ref, optional read after): the accessibility tree, through `apps.py` on the cloud screen and agent-desktop on the Mac |
+| Browser | `readPage`, `pageControls`, `usePage`: the bot's Chrome through the DOM |
 | Memory | `search_memory`, `save_memory`, `delete_memory` |
 | Collaboration | `message_bot`, `list_teammates` |
 | Human | `request_takeover`, `ask_user` (form/question card) |
@@ -881,6 +883,16 @@ Turns, schedules and the computer check now run in `apps/server`, and `apps/task
 - **Schedules:** a `nextRunAt` column and a 15 s clock. Moving `nextRunAt` claims a firing, so it happens once. A firing missed while the server was down runs once when it is back. `croner` computes cron times in the person's time zone. "Run now" no longer turns a recurring schedule off.
 - **Device tools** call the relay in-process, so `/internal/events`, `/internal/devices/:id/invoke` and `INTERNAL_API_SECRET` are gone.
 - **Removed:** `apps/tasks`, `@trigger.dev/sdk`, `@trigger.dev/react-hooks`, `TRIGGER_SECRET_KEY`, `TRIGGER_PROJECT_REF`.
+
+### 14.3 Screen work (2026-11-07)
+
+Bots kept missing what they clicked. Each fix below was measured on the real cloud computer.
+
+- **Batched actions:** one `useScreen` call runs up to 12 actions and returns one screenshot. On the cloud screen the whole batch and the screenshot are a single exec. A screenshot identical to the last one isn't sent again.
+- **A model that can aim:** on a 1280×800 screenshot, `gpt-5-4-nano` landed 50–100 px off in no steady direction, while `gpt-5-4-mini` and up hit within a few pixels. Nothing was resizing the image. Bots on the default model switch to `SCREEN_MODEL` (`gpt-5-4-mini`) from their first screenshot on.
+- **Controls instead of pixels:** for desktop apps, bots read the accessibility tree and act by ref, as research on GUI agents and Rakazo both suggest. On the cloud screen this is `apps.py` over AT-SPI with the system's own bindings (`gir1.2-atspi-2.0`). agent-desktop was tried first and crashes GTK apps on the image's Ubuntu 22.04 accessibility libraries. On the Mac it is agent-desktop 0.11.1, which the app downloads and checks by sha256 itself. Ref steps don't need a model that can aim, so they stay on the default model.
+- **Screens are cleaned up:** deleting a bot closes its screen even while the computer sleeps. Before, the next bot given the same screen number could find the old windows.
+- **Not done:** Chrome's own controls aren't in the tree (web pages go through the DOM tools), and Thunar's icon view doesn't list files one by one.
 
 ---
 
