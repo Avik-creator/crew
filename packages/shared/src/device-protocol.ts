@@ -116,7 +116,7 @@ export type AppAction =
   | { type: "type" | "set-value"; ref: string; text: string }
   | { type: "select"; ref: string; option: string }
   | { type: "scroll"; ref: string; direction: "up" | "down" | "left" | "right"; amount?: number }
-  | { type: "press"; keys: string; app?: string }
+  | { type: "press"; keys: string; app?: string; ref?: string }
 
 export type AppSnapshotOptions = {
   app: string

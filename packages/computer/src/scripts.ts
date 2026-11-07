@@ -1,13 +1,15 @@
 // Files and toolchains the computer needs. Our E2B template bakes them in;
 // on a stock desktop image they're installed on first use, so either works.
 
-export const SCRIPTS_VERSION = "10"
+export const SCRIPTS_VERSION = "13"
 export const HOME = "/home/user"
 export const CREW_DIR = `${HOME}/.crew`
 export const WORKSPACE = `${HOME}/workspace`
 
 // Idempotent installers, keyed by what needs them
 export const TOOLCHAINS = {
+  // Python bindings for the accessibility tree, which apps.py reads
+  atspi: `python3 -c "import gi; gi.require_version('Atspi', '2.0')" 2>/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gir1.2-atspi-2.0 || (sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gir1.2-atspi-2.0)`,
   node: `command -v node >/dev/null && node -v | grep -qE '^v(2[0-9])' || (curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nodejs)`,
   uv: `command -v uvx >/dev/null || (curl -LsSf https://astral.sh/uv/install.sh | sh && sudo ln -sf ${HOME}/.local/bin/uv /usr/local/bin/uv && sudo ln -sf ${HOME}/.local/bin/uvx /usr/local/bin/uvx)`,
   playwright: `python3 -c "import playwright" 2>/dev/null || python3 -m pip install --user -q playwright==1.58.0`,

@@ -1,6 +1,7 @@
 import { CLOUD_SCREEN, PORTS } from "@crew/shared"
 
 import type { ComputerHandle } from "./provider"
+import { appsScript } from "./apps-script"
 import { browserScript, CREW_DIR, HOME, SCRIPTS_VERSION, TOOLCHAINS, WORKSPACE, type Toolchain } from "./scripts"
 import { Supervisor } from "./supervisor"
 
@@ -22,6 +23,7 @@ export class Workstation {
     if (cur.stdout.trim() === SCRIPTS_VERSION) return
     await this.computer.exec(`mkdir -p ${CREW_DIR} ${WORKSPACE}/.sessions ${WORKSPACE}`)
     await this.computer.writeFile(`${CREW_DIR}/browser.py`, browserScript)
+    await this.computer.writeFile(`${CREW_DIR}/apps.py`, appsScript)
     await this.supervisor.ready()
     // Browser automation is needed for shared logins; install in the background
     await this.computer.exec(`(${TOOLCHAINS.playwright}) >/tmp/crew-playwright.log 2>&1`, { background: true })

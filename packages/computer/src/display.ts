@@ -1,6 +1,6 @@
 import { CLOUD_SCREEN, type ScreenshotPayload } from "@crew/shared"
 
-import type { ActResult, BrowserControl, ComputerDriver, DesktopAction, PageAction } from "./driver"
+import type { ActResult, AppAction, AppControl, AppSnapshotOptions, BrowserControl, ComputerDriver, DesktopAction, PageAction } from "./driver"
 import type { ComputerHandle } from "./provider"
 import { CREW_DIR, TOOLCHAINS, WORKSPACE } from "./scripts"
 
@@ -10,6 +10,27 @@ const BUTTON = { left: 1, middle: 2, right: 3 } as const
 const SCROLL = { up: 4, down: 5, left: 6, right: 7 } as const
 // Time for the UI to react before the screenshot
 const SETTLE_S = 0.35
+// What models call the apps on the cloud computer, and the program for each
+const APP_ALIASES: Record<string, string> = {
+  terminal: "xfce4-terminal",
+  "xfce terminal": "xfce4-terminal",
+  "text editor": "mousepad",
+  editor: "mousepad",
+  textedit: "mousepad",
+  notepad: "mousepad",
+  gedit: "mousepad",
+  files: "thunar",
+  "file manager": "thunar",
+  finder: "thunar",
+  calculator: "galculator",
+}
+const program = (name: string) => APP_ALIASES[name.trim().toLowerCase()] ?? name.trim()
+// The browser isn't here: openUrl starts it with the bot's profile and logins
+const KNOWN_APPS = "xfce4-terminal (terminal), mousepad (text editor), thunar (files), galculator (calculator). For the browser, use openUrl"
+
+// The display's session bus, which its apps found the same way: the
+// accessibility tree is reached through it
+const SESSION_BUS = `eval "$(dbus-launch --autolaunch=$(cat /etc/machine-id) --sh-syntax 2>/dev/null)";`
 
 // xdotool key names for the common shortcuts models write
 function normalizeKeys(keys: string) {
@@ -52,6 +73,23 @@ export class CloudDisplayDriver implements ComputerDriver {
     read: (maxChars = 20_000) => this.page("read", String(maxChars)),
     controls: () => this.page("controls"),
     act: (action: PageAction) => this.page("act", JSON.stringify(action)),
+  }
+
+  readonly apps: AppControl = {
+    listApps: () => this.appsPy("list"),
+    snapshot: (opts: AppSnapshotOptions) => this.appsPy("read", { ...opts, app: program(opts.app) }),
+    act: (action: AppAction) =>
+      this.appsPy("act", action.type === "press" ? { ...action, keys: normalizeKeys(action.keys), app: action.app && program(action.app) } : action),
+  }
+
+  // Runs one apps.py command on this display and parses its JSON
+  private async appsPy(command: string, arg?: object): Promise<unknown> {
+    const r = await this.computer.exec(
+      `(${TOOLCHAINS.atspi}) >/tmp/crew-atspi.log 2>&1; ${this.env} ${SESSION_BUS} python3 ${CREW_DIR}/apps.py ${command} ${this.display}${arg ? ` ${q(JSON.stringify(arg))}` : ""}`,
+      { timeoutMs: 90_000 },
+    )
+    if (r.exitCode !== 0) throw new Error(r.stderr.trim().split("\n").pop() || "The app didn't answer")
+    return JSON.parse(r.stdout.trim().split("\n").pop() || "null")
   }
 
   // Runs one browser.py command against this bot's Chrome and parses its JSON
@@ -158,9 +196,16 @@ export class CloudDisplayDriver implements ComputerDriver {
     return `Opened ${url} in the browser on your screen.`
   }
 
+  // Starts an app by its program name or a common name for it, and says so
+  // plainly when there's no such program
   async openApp(name: string) {
-    await this.computer.exec(`${this.env} nohup ${q(name)} >/dev/null 2>&1 &`, { timeoutMs: 10_000 })
-    return `Started ${name}.`
+    const bin = program(name)
+    const r = await this.computer.exec(
+      `command -v ${q(bin)} >/dev/null || exit 3; ${this.env} nohup ${q(bin)} >/dev/null 2>&1 & sleep 1.5`,
+      { timeoutMs: 15_000 },
+    )
+    if (r.exitCode === 3) throw new Error(`There's no app called "${name}" here. Try one of: ${KNOWN_APPS}.`)
+    return `Started ${bin}${bin === name ? "" : ` (${name})`}. Use readApp with "${bin}" to see it.`
   }
 
   async saveLogins() {
