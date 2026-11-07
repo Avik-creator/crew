@@ -48,6 +48,20 @@ const clip = (s: unknown, n = 60) => {
 }
 
 // One step of a useScreen call
+// One step from useApp, aimed at a control by ref
+function appAction(a: Record<string, any>): { icon: ReactNode; text: ReactNode } {
+  const verb: Record<string, string> = {
+    click: "Clicked", "right-click": "Right-clicked", type: "Typed in", "set-value": "Filled in", select: "Picked", scroll: "Scrolled",
+    check: "Checked", uncheck: "Unchecked", toggle: "Toggled", expand: "Expanded", collapse: "Collapsed", focus: "Focused",
+    clear: "Cleared", "scroll-to": "Scrolled to", press: "Pressed",
+  }
+  const detail = a.action === "press" ? a.keys : a.action === "select" ? a.option : a.text
+  return {
+    icon: <MousePointerClick />,
+    text: <>{verb[a.action] ?? humanize(String(a.action ?? "Used"))} {detail ? <span className="text-fg">“{clip(detail, 40)}”</span> : <span className="font-mono text-faint">{clip(a.ref, 24)}</span>}</>,
+  }
+}
+
 function screenAction(a: Record<string, any>): { icon: ReactNode; text: ReactNode } {
   switch (a.type) {
     case "click":
@@ -143,15 +157,20 @@ export function describeTool(name: string, input: Record<string, any> = {}): { i
     case "readApp":
       return { icon: <ScanSearch />, text: <>Read <span className="text-fg">{input.app ?? "an app"}</span>{input.surface ? ` (${input.surface})` : ""}</> }
     case "useApp": {
-      const verb: Record<string, string> = {
-        click: "Clicked", "right-click": "Right-clicked", type: "Typed in", "set-value": "Filled in", select: "Picked", scroll: "Scrolled",
-        check: "Checked", uncheck: "Unchecked", toggle: "Toggled", expand: "Expanded", collapse: "Collapsed", focus: "Focused",
-        clear: "Cleared", "scroll-to": "Scrolled to", press: "Pressed",
-      }
-      const detail = input.action === "press" ? input.keys : input.action === "select" ? input.option : input.text
+      // Older chats have one action at the top level
+      const actions = (Array.isArray(input.actions) ? input.actions : [input]) as Record<string, any>[]
+      if (actions.length === 1) return appAction(actions[0]!)
+      const typed = actions.find((a) => a.action === "type" || a.action === "set-value")
+      const where = input.readAfter ? ` in ${input.readAfter}` : ""
       return {
         icon: <MousePointerClick />,
-        text: <>{verb[input.action] ?? humanize(String(input.action ?? "Used"))} {detail ? <span className="text-fg">“{clip(detail, 40)}”</span> : <span className="font-mono text-faint">{clip(input.ref, 24)}</span>}</>,
+        text: typed ? (
+          <>
+            {actions.length} steps{where}, typing <span className="text-fg">“{clip(typed.text, 40)}”</span>
+          </>
+        ) : (
+          `${actions.length} steps${where}`
+        ),
       }
     }
     case "saveLogins":
