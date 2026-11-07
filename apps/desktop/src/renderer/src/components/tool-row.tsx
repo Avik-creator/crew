@@ -47,23 +47,59 @@ const clip = (s: unknown, n = 60) => {
   return t.length > n ? `${t.slice(0, n)}…` : t
 }
 
+// One step of a useScreen call
+function screenAction(a: Record<string, any>): { icon: ReactNode; text: ReactNode } {
+  switch (a.type) {
+    case "click":
+      return { icon: <MousePointerClick />, text: `${a.double ? "Double-clicked" : a.button === "right" ? "Right-clicked" : "Clicked"} at ${a.x}, ${a.y}` }
+    case "move":
+      return { icon: <MousePointerClick />, text: `Moved the mouse to ${a.x}, ${a.y}` }
+    case "drag":
+      return { icon: <MousePointerClick />, text: "Dragged on the screen" }
+    case "scroll":
+      return { icon: <MousePointerClick />, text: `Scrolled ${a.direction ?? ""}` }
+    case "type":
+      return { icon: <Keyboard />, text: <>Typed <span className="text-fg">“{clip(a.text, 48)}”</span></> }
+    case "key":
+      return { icon: <Keyboard />, text: <>Pressed <span className="font-mono text-fg">{a.keys}</span></> }
+    default:
+      return { icon: <Eye />, text: "Waited for the screen" }
+  }
+}
+
 // One-line description of what a tool call did, in plain words
 export function describeTool(name: string, input: Record<string, any> = {}): { icon: ReactNode; text: ReactNode } {
   switch (name) {
     case "viewScreen":
       return { icon: <Eye />, text: "Looked at the screen" }
+    case "useScreen": {
+      const actions = (Array.isArray(input.actions) ? input.actions : []) as Record<string, any>[]
+      if (actions.length === 1) return screenAction(actions[0]!)
+      const typed = actions.find((a) => a.type === "type")
+      return {
+        icon: typed ? <Keyboard /> : <MousePointerClick />,
+        text: typed ? (
+          <>
+            {actions.length} steps on the screen, typing <span className="text-fg">“{clip(typed.text, 40)}”</span>
+          </>
+        ) : (
+          `${actions.length || "Some"} steps on the screen`
+        ),
+      }
+    }
+    // Single-action tools from before useScreen, still in older chats
     case "mouseClick":
-      return { icon: <MousePointerClick />, text: `${input.double ? "Double-clicked" : input.button === "right" ? "Right-clicked" : "Clicked"} at ${input.x}, ${input.y}` }
+      return screenAction({ ...input, type: "click" })
     case "mouseMove":
-      return { icon: <MousePointerClick />, text: `Moved the mouse to ${input.x}, ${input.y}` }
+      return screenAction({ ...input, type: "move" })
     case "mouseDrag":
-      return { icon: <MousePointerClick />, text: "Dragged on the screen" }
+      return screenAction({ ...input, type: "drag" })
     case "mouseScroll":
-      return { icon: <MousePointerClick />, text: `Scrolled ${input.direction ?? ""}` }
+      return screenAction({ ...input, type: "scroll" })
     case "keyboardType":
-      return { icon: <Keyboard />, text: <>Typed <span className="text-fg">“{clip(input.text, 48)}”</span></> }
+      return screenAction({ ...input, type: "type" })
     case "keyboardPress":
-      return { icon: <Keyboard />, text: <>Pressed <span className="font-mono text-fg">{input.keys}</span></> }
+      return screenAction({ ...input, type: "key" })
     case "bash":
       return { icon: <Terminal />, text: <>Ran <span className="font-mono text-fg">{clip(input.command, 70)}</span></> }
     case "readFile":

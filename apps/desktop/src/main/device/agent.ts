@@ -240,6 +240,11 @@ export class DeviceAgent {
       }
       showOverlay(botName)
       await fn(await this.scale())
+      // In a batch, only the last action needs a look at the result
+      if (a.noShot) {
+        await new Promise((r) => setTimeout(r, 150))
+        return null
+      }
       await new Promise((r) => setTimeout(r, 350))
       return this.screenshot()
     }
