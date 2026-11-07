@@ -7,6 +7,9 @@ let neon: ReturnType<typeof createNeon> | undefined
 
 export const DEFAULT_MODEL = () => process.env.DEFAULT_MODEL || "gpt-5-4-nano"
 export const ROUTER_MODEL = () => process.env.ROUTER_MODEL || "claude-haiku-5-5"
+// Places clicks once a turn is working a screen. gpt-5-4-nano lands 50-100px
+// off on a 1280x800 screenshot; mini and up are within a few pixels.
+export const SCREEN_MODEL = () => process.env.SCREEN_MODEL || "gpt-5-4-mini"
 
 export function languageModel(id?: string | null): LanguageModel {
   neon ??= createNeon({

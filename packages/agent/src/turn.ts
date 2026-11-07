@@ -33,13 +33,13 @@ import { and, eq, gte, inArray, ne } from "drizzle-orm"
 import { builtinApproval } from "./approval"
 import type { EventSink, TurnContext, TurnDispatcher } from "./context"
 import { loadHistory, stripImages } from "./history"
-import { languageModel } from "./model"
+import { languageModel, SCREEN_MODEL } from "./model"
 import { buildSystemPrompt } from "./prompt"
 import { saveMessage } from "./store"
 import { collabTools } from "./tools/collab"
 import { appTools } from "./tools/apps"
 import { browserTools } from "./tools/browser"
-import { computerTools } from "./tools/computer"
+import { computerTools, SCREEN_TOOLS } from "./tools/computer"
 import { loadMemories, memoryTools } from "./tools/memory"
 import { teamTools } from "./tools/team"
 
@@ -271,6 +271,9 @@ export async function runTurn(run: Run, deps: TurnDeps): Promise<TurnResult> {
       runId,
       createdAt: new Date().toISOString(),
     }
+    // A bot on the default model hands the screen to one that can aim, from
+    // its first screenshot on. A model the person picked is kept throughout.
+    const screenModel = bot.model ? undefined : languageModel(SCREEN_MODEL())
     const result = streamText({
       model: languageModel(bot.model),
       system,
@@ -278,7 +281,10 @@ export async function runTurn(run: Run, deps: TurnDeps): Promise<TurnResult> {
       tools,
       toolApproval: ({ toolCall }) => approvalOf[toolCall.toolName] ?? builtin(toolCall.toolName, toolCall.input),
       stopWhen: [isStepCount(LIMITS.maxStepsPerTurn), hasToolCall("requestTakeover")],
-      prepareStep: ({ messages: stepMessages }) => ({ messages: pruneImages(stepMessages) }),
+      prepareStep: ({ messages: stepMessages, steps }) => ({
+        messages: pruneImages(stepMessages),
+        ...(screenModel && steps.some((s) => s.toolCalls.some((c) => SCREEN_TOOLS.has(c.toolName))) ? { model: screenModel } : {}),
+      }),
       abortSignal: deps.signal,
     })
 

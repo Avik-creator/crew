@@ -69,7 +69,7 @@ pnpm dev:desktop    # the app
 
 Sign up, create a bot, and send it a message. The server must stay running for turns, schedules, and the ten-minute computer check. A schedule that comes due while the server is down runs once when it is back. If the server stops in the middle of a turn, that turn is not replayed, because it may already have sent something. The bot leaves a note in the chat instead.
 
-The default model is `gpt-5-4-nano`, through the Neon AI Gateway. `ROUTER_MODEL` defaults to `claude-haiku-5-5` and is only used to pick who answers in a group. Set either in `.env`. A bot can also pin its own model.
+The default model is `gpt-5-4-nano`, through the Neon AI Gateway. `ROUTER_MODEL` defaults to `claude-haiku-5-5` and is only used to pick who answers in a group. `SCREEN_MODEL` defaults to `gpt-5-4-mini` and takes over once a bot on the default model starts using a screen, because nano misses clicks by 50–100 pixels. Set any of them in `.env`. A bot can also pin its own model, which it then keeps for screen work too.
 
 ## Connectors
 
