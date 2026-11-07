@@ -18,11 +18,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Commands run as "user" with sudo, like on E2B. supervisord runs as root and
 # lets that user talk to it. Chromium runs unsandboxed: the container is the
 # sandbox, and Chromium's own needs privileges a container doesn't give.
+# --test-type hides the "unsupported command-line flag" bar --no-sandbox brings.
 RUN useradd -m -s /bin/bash user \
     && echo "user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/user \
     && sed -i 's/^chmod=0700/chmod=0770/' /etc/supervisor/supervisord.conf \
     && ln -s /usr/share/novnc /opt/noVNC \
-    && echo 'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox"' > /etc/chromium.d/crew \
+    && echo 'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox --test-type"' > /etc/chromium.d/crew \
     && dbus-uuidgen --ensure=/etc/machine-id
 
 USER user
