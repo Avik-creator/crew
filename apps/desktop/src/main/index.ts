@@ -51,9 +51,8 @@ function createWindow() {
     show: false,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 18 },
-    vibrancy: "sidebar",
-    visualEffectState: "active",
-    backgroundColor: process.platform === "darwin" ? "#00000000" : nativeTheme.shouldUseDarkColors ? "#1c1c1e" : "#ffffff",
+    // Solid, like the page under it, so the window never flashes another color
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0a0a0a" : "#ffffff",
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),
       sandbox: true,

@@ -25,6 +25,9 @@
   --color-ok: var(--ok);
 
   --color-sidebar: var(--sidebar);
+  --color-bubble: var(--bubble);
+  --color-bubble-fg: var(--bubble-fg);
+  --color-working: var(--working);
 
   --radius-xl: 12px;
   --shadow-pop: 0 10px 28px -8px rgb(0 0 0 / 0.22), 0 0 0 0.5px var(--line-strong);
@@ -49,49 +52,53 @@
   }
 }
 
+/* Colors after Rakazo's tokens (github.com/elie222/rakazo, Apache-2.0,
+   packages/ui-tokens): near-black or white surfaces, text as one color at a
+   few strengths, and blue kept for links, unread and focus. */
 :root {
   --bg: #ffffff;
   --panel: #ffffff;
-  --sidebar: transparent;
-  --raised: #f5f5f7;
-  --hover: rgb(0 0 0 / 0.06);
-  --line: rgb(0 0 0 / 0.08);
-  --line-strong: rgb(0 0 0 / 0.14);
-  --fg: #1d1d1f;
-  --muted: #6e6e73;
-  --faint: #86868b;
-  --accent: #007aff;
+  --sidebar: #f5f5f5;
+  --raised: #f2f2f2;
+  --hover: #1c1c1c0f;
+  --line: #1c1c1c1f;
+  --line-strong: #1c1c1c3d;
+  --fg: #1c1c1c;
+  --muted: #1c1c1cad;
+  --faint: #1c1c1c8f;
+  --accent: #0b6dd3;
   --accent-fg: #ffffff;
-  --accent-soft: #e8f2ff;
-  --danger: #ff3b30;
-  --warn: #d97706;
-  --ok: #34c759;
+  --accent-soft: #0b6dd31a;
+  --bubble: #1c1c1c;
+  --bubble-fg: #ffffff;
+  --working: #10ab61;
+  --danger: #cd2834;
+  --warn: #aa6300;
+  --ok: #00854a;
   color-scheme: light;
 }
 
 .dark {
-  --bg: #1e1e1f;
-  --panel: #262628;
-  --sidebar: transparent;
-  --raised: #2f2f31;
-  --hover: rgb(255 255 255 / 0.07);
-  --line: rgb(255 255 255 / 0.1);
-  --line-strong: rgb(255 255 255 / 0.16);
-  --fg: #f5f5f7;
-  --muted: #aeaeb2;
-  --faint: #8e8e93;
-  --accent: #0a84ff;
+  --bg: #0a0a0a;
+  --panel: #161616;
+  --sidebar: #0a0a0a;
+  --raised: #232323;
+  --hover: #f5f5f514;
+  --line: #f5f5f51a;
+  --line-strong: #f5f5f538;
+  --fg: #f5f5f5;
+  --muted: #f5f5f5a8;
+  --faint: #f5f5f58a;
+  --accent: #4d9bff;
   --accent-fg: #ffffff;
-  --accent-soft: #16324f;
-  --danger: #ff453a;
-  --warn: #ff9f0a;
-  --ok: #30d158;
+  --accent-soft: #4d9bff26;
+  --bubble: #3e3e3e;
+  --bubble-fg: #f5f5f5;
+  --working: #0e9f5a;
+  --danger: #ff6463;
+  --warn: #e28600;
+  --ok: #00ba69;
   color-scheme: dark;
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  :root { --sidebar: #e8e8ed; }
-  .dark { --sidebar: #1c1c1e; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -110,7 +117,7 @@ body,
 
 body {
   margin: 0;
-  background: transparent;
+  background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
   font-size: 13.5px;
@@ -133,14 +140,15 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--line-strong);
-  border-radius: 99px;
-  border: 3px solid transparent;
-  background-clip: content-box;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -163,38 +171,54 @@ textarea:focus-visible,
   outline: none;
 }
 
-/* Markdown in messages */
+/* Markdown in messages, sized like Rakazo's chat: 15/22 with roomy blocks */
 .prose-chat {
-  font-size: 13.5px;
-  line-height: 1.6;
+  font-size: 15px;
+  line-height: 22px;
 }
-.prose-chat p {
-  margin: 0.35em 0;
-}
-.prose-chat p:first-child { margin-top: 0; }
-.prose-chat p:last-child { margin-bottom: 0; }
+.prose-chat p,
+.prose-chat ul,
+.prose-chat ol,
 .prose-chat pre {
-  font-size: 12px;
+  margin: 0.65em 0;
+}
+.prose-chat > :first-child { margin-top: 0; }
+.prose-chat > :last-child { margin-bottom: 0; }
+.prose-chat h1,
+.prose-chat h2,
+.prose-chat h3 {
+  font-weight: 650;
+  line-height: 1.25;
+}
+.prose-chat h1 { font-size: 1.35em; }
+.prose-chat h2 { font-size: 1.2em; }
+.prose-chat h3 { font-size: 1.05em; }
+.prose-chat strong { font-weight: 600; }
+.prose-chat li::marker { color: var(--faint); }
+.prose-chat pre {
+  font-size: 12.5px;
 }
 .prose-chat a:not([data-mention]) {
   color: var(--accent);
   text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
   text-underline-offset: 2px;
 }
-.prose-chat.bg-fg a:not([data-mention]) {
+.prose-chat.bg-bubble a:not([data-mention]) {
   color: inherit;
 }
 .prose-chat code:not(pre code) {
   font-family: var(--font-mono);
-  font-size: 0.9em;
-  background: var(--raised);
-  padding: 0.1em 0.35em;
-  border-radius: 5px;
+  font-size: 13px;
+  background: var(--hover);
+  border: 1px solid var(--line);
+  padding: 0.05em 0.35em;
+  border-radius: 0.35em;
 }
 
-/* Your own bubbles are light on dark and dark on light; code inside follows */
+/* Your own bubbles are dark in both themes; code inside follows */
 .bubble-mine code:not(pre code) {
-  background: color-mix(in srgb, var(--bg) 18%, transparent);
+  background: color-mix(in srgb, var(--bubble-fg) 14%, transparent);
 }
 
 /* Bot faces: eyes ease toward the pointer and blink now and then */
@@ -215,12 +239,9 @@ textarea:focus-visible,
   .face-blink { animation: none; }
 }
 
-/* Mention chips inside your own bubble, which flips light and dark */
+/* Mention chips inside your own bubble, which is dark in both themes */
 .bubble-mine [data-mention] {
   color: color-mix(in srgb, var(--chip) 65%, white);
-}
-.dark .bubble-mine [data-mention] {
-  color: color-mix(in srgb, var(--chip) 75%, black);
 }
 
 /* Composer (Tiptap) */

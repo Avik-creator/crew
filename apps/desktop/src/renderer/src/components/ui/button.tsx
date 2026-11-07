@@ -11,10 +11,10 @@ const button = cva(
   {
     variants: {
       variant: {
-        primary: "bg-accent text-accent-fg hover:bg-accent/90 active:scale-[0.98] motion-reduce:active:scale-100",
-        secondary: "bg-raised text-fg hover:bg-hover border border-line",
+        primary: "bg-fg text-bg hover:bg-fg/85 active:scale-[0.98] motion-reduce:active:scale-100",
+        secondary: "bg-hover text-fg hover:bg-fg/12",
         ghost: "text-muted hover:text-fg hover:bg-hover",
-        outline: "border border-line text-fg hover:bg-hover",
+        outline: "border border-line-strong text-fg hover:bg-hover",
         danger: "bg-danger text-white hover:brightness-110",
         "danger-ghost": "text-danger hover:bg-danger/10",
       },

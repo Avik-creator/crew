@@ -1,0 +1,9 @@
+Crew
+Copyright 2026 the Crew authors
+
+The desktop app's colors, type sizes and layout (the sidebar, the floating
+chat header, message bubbles, the tool-step disclosure, the composer and the
+bot panel) follow Rakazo, https://github.com/elie222/rakazo, licensed under the
+Apache License 2.0. Copyright 2026 Rakazo contributors. Crew re-implements
+these in its own components; the color values come from Rakazo's
+packages/ui-tokens.
