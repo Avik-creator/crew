@@ -120,6 +120,7 @@ async function driverFor(ctx: Omit<TurnContext, "dispatcher" | "events">): Promi
     openApp: true,
     saveLogins: true,
     browser: true,
+    apps: true,
   })
 }
 
@@ -159,7 +160,7 @@ function omitBlankInput(input: unknown): unknown {
 }
 
 // Text these tools type or press is meant literally, even "x" or "any"
-const LITERAL_INPUT = new Set(["useScreen"])
+const LITERAL_INPUT = new Set(["useScreen", "useApp"])
 
 function prepareTools(tools: Record<string, Tool>): Record<string, Tool> {
   return Object.fromEntries(

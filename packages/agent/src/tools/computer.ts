@@ -172,7 +172,7 @@ export function computerTools(driver: ComputerDriver): Record<string, Tool> {
   if (driver.openApp) {
     const openApp = driver.openApp.bind(driver)
     tools.openApp = tool({
-      description: "Open an application by name.",
+      description: "Open an app by name, e.g. terminal, text editor, files or calculator. It answers with the name readApp needs.",
       inputSchema: z.object({ name: z.string() }),
       execute: ({ name }) => openApp(name),
     })
