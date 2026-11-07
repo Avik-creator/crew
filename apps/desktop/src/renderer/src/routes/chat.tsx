@@ -251,7 +251,7 @@ export function ChatRoute({ threadId }: { threadId: string }) {
 
   const stop = async () => {
     await Promise.all(live.map((r) => api(`/runs/${r.runId}/cancel`, { method: "POST" }).catch(() => {})))
-    for (const r of live) liveRuns.remove(threadId, r.botId)
+    for (const r of live) liveRuns.remove(threadId, r.runId)
   }
 
   if (!thread) {

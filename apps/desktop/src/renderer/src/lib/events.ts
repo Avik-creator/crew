@@ -30,7 +30,7 @@ function handle(event: AppEvent) {
       // The live reply stays until the saved one is loaded, so it never blinks out
       void queryClient
         .invalidateQueries({ queryKey: keys.messages(event.threadId) })
-        .finally(() => liveRuns.remove(event.threadId, event.botId))
+        .finally(() => liveRuns.remove(event.threadId, event.runId))
       invalidate(keys.threads)
       return
     case "approval.requested":

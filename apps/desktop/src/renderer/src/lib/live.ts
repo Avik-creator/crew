@@ -14,14 +14,15 @@ export const liveRuns = {
   add(threadId: string, run: ActiveRun) {
     const list = runs[threadId] ?? []
     if (ended.has(run.runId) || list.some((r) => r.runId === run.runId)) return
-    runs = { ...runs, [threadId]: [...list.filter((r) => r.botId !== run.botId), run] }
+    runs = { ...runs, [threadId]: [...list, run] }
     emit()
   },
-  remove(threadId: string, botId: string) {
+  // By run, so a bot's next turn that started meanwhile stays on screen
+  remove(threadId: string, runId: string) {
+    ended.add(runId)
     const list = runs[threadId]
-    if (!list) return
-    for (const r of list) if (r.botId === botId) ended.add(r.runId)
-    runs = { ...runs, [threadId]: list.filter((r) => r.botId !== botId) }
+    if (!list?.some((r) => r.runId === runId)) return
+    runs = { ...runs, [threadId]: list.filter((r) => r.runId !== runId) }
     emit()
   },
   subscribe(fn: () => void) {
