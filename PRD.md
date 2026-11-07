@@ -65,7 +65,7 @@ The product model follows xAI's **Grok Bot**.
 | LLM | **Neon AI Gateway** via `@neon/ai-sdk-provider` |
 | Where agents run | **The backend** (`apps/server` runs every turn itself; Trigger.dev until 2026-11-07, see §14.2); the desktop app is a client |
 | Computer | **One shared cloud computer per person**, one screen per bot |
-| Computer provider | **E2B** (primary): memory-preserving pause/resume, custom templates, Firecracker microVMs. Behind a `ComputerProvider` interface so **Daytona** can be swapped in (§8.1) |
+| Computer provider | **E2B** (primary): memory-preserving pause/resume, custom templates, Firecracker microVMs. Behind a `ComputerProvider` interface so **Daytona** or a local **Docker** container can be swapped in (§8.1) |
 | Local mode | A bot can run on **your Mac** instead; the agent stays in the cloud and calls tools on your Mac through the **device bridge** (outbound WebSocket from the desktop app) |
 | Bot collaboration | **Async bot-to-bot messages** + **group chats with a router** |
 | Connectors | **MCP only**, one generic layer; **remote (HTTP)** and **stdio** servers; stdio runs on the cloud computer or on your Mac; first remote: hosted **gitlab.com** and **github.com** |
@@ -465,14 +465,14 @@ interface ComputerProvider {
 }
 ```
 
-| | **E2B (primary)** | **Daytona (alternative)** |
-|---|---|---|
-| Idle | **Pause**: filesystem **and memory** saved; running processes survive; kept indefinitely; no cost while paused | Stop: files kept, processes lost |
-| Wake | `connect()` auto-resumes, about 1s | `start()`, then restart displays and services |
-| Max continuous runtime | 24h (Pro) / 1h (Hobby), reset by pause/resume | No cap found in docs read so far |
-| Port access | `getHost(port)` + `e2b-traffic-access-token` **header** | Signed preview URL (token in URL) |
-| Shared volumes (fallback) | Private beta (request access) | GA |
-| Image | Custom E2B template (Dockerfile) | Snapshot/image |
+| | **E2B (primary)** | **Daytona (alternative)** | **Docker (local, §14.4)** |
+|---|---|---|---|
+| Idle | **Pause**: filesystem **and memory** saved; running processes survive; kept indefinitely; no cost while paused | Stop: files kept, processes lost | `docker pause`: memory kept |
+| Wake | `connect()` auto-resumes, about 1s | `start()`, then restart displays and services | `unpause`, about 0.2s |
+| Max continuous runtime | 24h (Pro) / 1h (Hobby), reset by pause/resume | No cap found in docs read so far | None |
+| Port access | `getHost(port)` + `e2b-traffic-access-token` **header** | Signed preview URL (token in URL) | Published on 127.0.0.1, no header |
+| Shared volumes (fallback) | Private beta (request access) | GA | Not needed |
+| Image | Custom E2B template (Dockerfile) | Snapshot/image | `packages/computer/docker/Dockerfile`, built on first use |
 
 ### 8.2 Driving a specific bot's screen
 The E2B Desktop SDK's built-in helpers (`screenshot()`, `leftClick()`, `write()`, …) drive the default display. For per-bot displays:
@@ -892,7 +892,14 @@ Bots kept missing what they clicked. Each fix below was measured on the real clo
 - **A model that can aim:** on a 1280×800 screenshot, `gpt-5-4-nano` landed 50–100 px off in no steady direction, while `gpt-5-4-mini` and up hit within a few pixels. Nothing was resizing the image. Bots on the default model switch to `SCREEN_MODEL` (`gpt-5-4-mini`) from their first screenshot on.
 - **Controls instead of pixels:** for desktop apps, bots read the accessibility tree and act by ref, as research on GUI agents and Rakazo both suggest. On the cloud screen this is `apps.py` over AT-SPI with the system's own bindings (`gir1.2-atspi-2.0`). agent-desktop was tried first and crashes GTK apps on the image's Ubuntu 22.04 accessibility libraries. On the Mac it is agent-desktop 0.11.1, which the app downloads and checks by sha256 itself. Ref steps don't need a model that can aim, so they stay on the default model.
 - **Screens are cleaned up:** deleting a bot closes its screen even while the computer sleeps. Before, the next bot given the same screen number could find the old windows.
-- **Not done:** Chrome's own controls aren't in the tree (web pages go through the DOM tools), and Thunar's icon view doesn't list files one by one.
+- **Not done:** Thunar's icon view doesn't list files one by one. (Chrome's own controls were added in §14.4.)
+
+### 14.4 Steering, the browser's controls, a Docker computer (2026-11-07)
+
+- **Steering:** a message the person sends while a bot is working in that thread goes to the running turn instead of queuing behind it. The runner hands it to the AI SDK's `experimental_createSteering`, which adds it at the next step boundary and gives a finished answer one more step. A message the turn never takes, because the turn ended first or stopped before the model ran, gets a turn of its own. One sent to a turn the person stopped is dropped with it. The send returns the running turn's id, so the app keeps showing that reply. Live replies now leave the screen by run, not by bot, so a bot's next turn doesn't vanish with the last one. Verified with a real turn: the second message reached step 3, there was one run, and the reply followed it.
+- **The browser's own controls:** Chrome starts with `ACCESSIBILITY_ENABLED=1` (without it Chrome isn't in the tree) and `--force-renderer-accessibility` (without it only the window frame shows). `readApp "browser"` lists the toolbar, tabs and prompts, and a web page is one line that points to the DOM tools. Chrome lists a prompt inside its window and again as a window of its own, so `apps.py` shows it once. Verified: a page's `alert()` was read and dismissed by ref. Chrome is also told it can't update, which removes the "Can't update Chrome" bubble.
+- **Docker computer:** `COMPUTER_PROVIDER=docker` runs the computer as a container on the server's machine through the `docker` CLI, with no SDK. The image is Debian 13 (`packages/computer/docker/Dockerfile`), because Ubuntu's Chromium is a snap and snaps don't run in containers. It is tagged with a hash of the Dockerfile and built on first use. Pausing freezes the container with its memory. A stopped container comes back with its screens, because supervisord is its main process. noVNC and bridge ports are published on 127.0.0.1 only, 20 of each. Chromium runs with `--no-sandbox`, since the container is the sandbox. Verified on an Apple Silicon Mac: start in 0.4 s, a screen in 0.5 s, the live view through websockify, the terminal and Chromium read by ref, wake from pause in 0.17 s, back with a screen after a stop in 0.8 s. Debian's VTE 0.80 shares no terminal text with screen readers, so `readApp` says so and points to `bash`.
+- **Provider choice:** a person whose computer was deleted now gets `COMPUTER_PROVIDER`. Before, the old provider stuck to their row.
 
 ---
 
@@ -911,7 +918,7 @@ BETTER_AUTH_URL=              # backend public URL
 ALLOWED_EMAILS= / ALLOWED_DOMAIN=
 
 # Cloud computer
-COMPUTER_PROVIDER=e2b         # e2b | daytona
+COMPUTER_PROVIDER=e2b         # e2b | daytona | docker
 E2B_API_KEY=
 E2B_TEMPLATE_ID=              # our built template
 DAYTONA_API_KEY=              # only if using the Daytona provider

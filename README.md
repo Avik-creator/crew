@@ -13,8 +13,9 @@ It is a learning build of how a Grok Bot-style teammate works on the inside. The
 ## What a bot can do
 
 - Read the thread and reply, including while you watch the text and the tool calls stream in.
+- Take a new message while it works. The message reaches the running turn at its next step, so you can correct course without stopping the bot.
 - Use a 1280×800 screen on the shared cloud computer: browser, shell, and files. Or use this Mac, with command rules and a kill shortcut (`⌘⇧Esc`).
-- Work desktop apps through their buttons and fields instead of guessing pixels. The bot reads an app's controls from the accessibility tree and acts on them by ref, on the cloud screen and on the Mac. Screenshots and clicks by position are kept for things with no controls, like canvases.
+- Work desktop apps through their buttons and fields instead of guessing pixels. The bot reads an app's controls from the accessibility tree and acts on them by ref, on the cloud screen and on the Mac. On the cloud screen that includes the browser's own tabs, buttons and pop-ups. Screenshots and clicks by position are kept for things with no controls, like canvases.
 - Call the apps you connect. An active connection is available to every bot on the account. Tools that write can ask first.
 - Message another bot. That exchange lives in its own thread, which you can read. In your chat you see who replied, and the bot that asked sums up the answer.
 - Take a turn in a group. An @mention picks the bot. Otherwise a small router model does.
@@ -38,7 +39,7 @@ Sign-up can be limited to an email allowlist. There is no billing and no web cli
 | `apps/desktop` | Electron app: the UI, and the device agent that lets a bot use your Mac |
 | `apps/server` | Hono API: auth, REST, live events, the turn runner, schedules, the screen proxy, the device relay, OAuth callbacks, and the Google MCP server |
 | `packages/agent` | The turn and the runner: prompt, tools, approvals, the group router, and schedules |
-| `packages/computer` | Cloud computers behind one provider interface. E2B is the default. Daytona implements the same interface |
+| `packages/computer` | Cloud computers behind one provider interface. E2B is the default. Daytona and a local Docker container implement the same interface |
 | `packages/mcp` | Connector catalog, OAuth, transports, and the approval policy |
 | `packages/db` | Drizzle schema and the Neon Postgres client |
 | `packages/shared` | Types, limits, and the device protocol |
@@ -47,7 +48,7 @@ Sign-up can be limited to an email allowlist. There is no billing and no web cli
 
 - Node 22 or newer, and pnpm 10
 - A Neon Postgres database with the AI Gateway enabled
-- An E2B API key, if bots should have a cloud screen
+- An E2B API key, or Docker on the server's machine, if bots should have a screen of their own
 
 ## Run it locally
 
@@ -58,6 +59,8 @@ pnpm db:push
 ```
 
 `.env.example` names every setting. The ones a local run needs are the database URLs, the AI Gateway URL and token, `E2B_API_KEY`, and the three random secrets (`BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, `DEVICE_TOKEN_PEPPER`). `openssl rand -hex 32` is enough for those. Leave `E2B_TEMPLATE_ID` empty to use E2B's stock desktop. `pnpm template:build` builds a faster image named `crew-computer` when you want one.
+
+To run the computer on this machine instead of E2B, set `COMPUTER_PROVIDER=docker`. The first bot that needs a screen builds the image from `packages/computer/docker/Dockerfile`, which takes several minutes once and uses about 2.4 GB. `pnpm computer:docker` builds it ahead. The container's screens are published on localhost only. A person's existing computer stays where it is until it's deleted. One difference: the terminal there doesn't share its text with the accessibility tree, so bots run commands with `bash`.
 
 `ALLOWED_EMAILS` restricts sign-up. Empty means anyone who can reach the API can create an account.
 
