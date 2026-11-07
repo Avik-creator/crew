@@ -1,6 +1,6 @@
 import { CLOUD_SCREEN, type ScreenshotPayload } from "@crew/shared"
 
-import type { BrowserControl, ComputerDriver, DesktopAction, PageAction } from "./driver"
+import type { ActResult, BrowserControl, ComputerDriver, DesktopAction, PageAction } from "./driver"
 import type { ComputerHandle } from "./provider"
 import { CREW_DIR, TOOLCHAINS, WORKSPACE } from "./scripts"
 
@@ -8,6 +8,8 @@ const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 
 const BUTTON = { left: 1, middle: 2, right: 3 } as const
 const SCROLL = { up: 4, down: 5, left: 6, right: 7 } as const
+// Time for the UI to react before the screenshot
+const SETTLE_S = 0.35
 
 // xdotool key names for the common shortcuts models write
 function normalizeKeys(keys: string) {
@@ -36,8 +38,8 @@ function normalizeKeys(keys: string) {
     .join(" ")
 }
 
-// Drives one bot's X display (:n) on the shared cloud computer. Every action
-// and its follow-up screenshot happen in a single exec round trip.
+// Drives one bot's X display (:n) on the shared cloud computer. A batch of
+// actions and the screenshot after it happen in a single exec round trip.
 export class CloudDisplayDriver implements ComputerDriver {
   readonly kind = "cloud" as const
 
@@ -89,51 +91,63 @@ export class CloudDisplayDriver implements ComputerDriver {
     return path.startsWith("/") ? path : `${WORKSPACE}/${path}`
   }
 
-  private async shot(prefix: string): Promise<ScreenshotPayload> {
+  private async shot(prefix: string): Promise<{ shot: ScreenshotPayload; prefixOutput: string }> {
     const file = `/tmp/crew-shot-${this.display}.jpg`
     const r = await this.computer.exec(
-      `${this.env} ${prefix} scrot -o -q 70 ${file} >/dev/null 2>&1 && base64 -w0 ${file}`,
-      { timeoutMs: 30_000 },
+      `${this.env} ${prefix} scrot -o -q 70 ${file} >/dev/null 2>&1 && echo && base64 -w0 ${file}`,
+      { timeoutMs: 60_000 },
     )
-    if (r.exitCode !== 0 || !r.stdout) throw new Error(`Screenshot failed: ${r.stderr || "no output"}`)
-    return { base64: r.stdout.trim(), mediaType: "image/jpeg", width: CLOUD_SCREEN.width, height: CLOUD_SCREEN.height }
+    const lines = r.stdout.trim().split("\n")
+    const base64 = lines.pop()
+    if (r.exitCode !== 0 || !base64) throw new Error(`Screenshot failed: ${r.stderr || "no output"}`)
+    return {
+      shot: { base64, mediaType: "image/jpeg", width: CLOUD_SCREEN.width, height: CLOUD_SCREEN.height },
+      prefixOutput: lines.join("\n"),
+    }
   }
 
-  screenshot() {
-    return this.shot("")
+  async screenshot() {
+    return (await this.shot("")).shot
   }
 
-  act(action: DesktopAction) {
-    const xd = (args: string) => `xdotool ${args};`
-    let cmd: string
+  private command(action: DesktopAction): string {
+    const xd = (args: string) => `xdotool ${args}`
     switch (action.type) {
       case "click":
-        cmd = xd(
+        return xd(
           `mousemove ${Math.round(action.x)} ${Math.round(action.y)} click ${action.double ? "--repeat 2 --delay 80 " : ""}${BUTTON[action.button ?? "left"]}`,
         )
-        break
       case "move":
-        cmd = xd(`mousemove ${Math.round(action.x)} ${Math.round(action.y)}`)
-        break
+        return xd(`mousemove ${Math.round(action.x)} ${Math.round(action.y)}`)
       case "drag":
-        cmd = xd(
+        return xd(
           `mousemove ${Math.round(action.fromX)} ${Math.round(action.fromY)} mousedown 1 mousemove --sync ${Math.round(action.toX)} ${Math.round(action.toY)} mouseup 1`,
         )
-        break
       case "scroll":
-        cmd = xd(
+        return xd(
           `mousemove ${Math.round(action.x)} ${Math.round(action.y)} click --repeat ${Math.min(Math.max(action.amount ?? 3, 1), 20)} ${SCROLL[action.direction]}`,
         )
-        break
       case "type":
-        cmd = xd(`type --delay 12 -- ${q(action.text)}`)
-        break
+        return xd(`type --delay 12 -- ${q(action.text)}`)
       case "key":
-        cmd = xd(`key -- ${normalizeKeys(action.keys)}`)
-        break
+        return xd(`key -- ${normalizeKeys(action.keys)}`)
+      case "wait":
+        return `sleep ${Math.min(Math.max(action.ms, 0), 5000) / 1000}`
     }
-    // Give the UI a moment to react before capturing
-    return this.shot(`${cmd} sleep 0.6;`)
+  }
+
+  // The whole batch and the screenshot after it are one exec round trip. Each
+  // action that succeeds bumps a counter, so a failure says how far it got.
+  async act(actions: DesktopAction[]): Promise<ActResult> {
+    const steps = actions.map((a, i) => `${this.command(a)} && n=${i + 1}`).join(" && sleep 0.15 && ")
+    const { shot, prefixOutput } = await this.shot(`n=0; { ${steps}; } >/dev/null 2>&1; sleep ${SETTLE_S}; echo "done=$n";`)
+    const completed = Number(/done=(\d+)/.exec(prefixOutput)?.[1] ?? 0)
+    const failed = actions[completed]
+    return {
+      ...shot,
+      completed,
+      ...(failed ? { error: `The ${failed.type} action didn't work` } : {}),
+    }
   }
 
   async openUrl(url: string) {

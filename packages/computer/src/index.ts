@@ -1,5 +1,5 @@
 export type * from "./provider"
-export type { AppAction, AppControl, AppSnapshotOptions, BrowserControl, ComputerDriver, DesktopAction, MouseButton, PageAction } from "./driver"
+export type { ActResult, AppAction, AppControl, AppSnapshotOptions, BrowserControl, ComputerDriver, DesktopAction, MouseButton, PageAction } from "./driver"
 export { CloudDisplayDriver } from "./display"
 export { DeviceDriver, setDeviceInvoker, type DeviceInvoke, type DeviceRunContext } from "./device"
 export { LazyDriver } from "./lazy"

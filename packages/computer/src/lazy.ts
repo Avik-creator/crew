@@ -47,8 +47,8 @@ export class LazyDriver implements ComputerDriver {
   async screenshot() {
     return (await this.get()).screenshot()
   }
-  async act(action: DesktopAction) {
-    return (await this.get()).act(action)
+  async act(actions: DesktopAction[]) {
+    return (await this.get()).act(actions)
   }
   async openUrl(url: string) {
     return (await this.get()).openUrl(url)

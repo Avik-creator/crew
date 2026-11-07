@@ -1,6 +1,6 @@
 import type { LocalToolName, ScreenshotPayload } from "@crew/shared"
 
-import type { AppAction, AppControl, AppSnapshotOptions, ComputerDriver, DesktopAction } from "./driver"
+import type { ActResult, AppAction, AppControl, AppSnapshotOptions, ComputerDriver, DesktopAction } from "./driver"
 import type { ExecResult, FileEntry } from "./provider"
 
 export type DeviceRunContext = { runId: string; botId: string; botName: string; background: boolean }
@@ -16,7 +16,7 @@ export function setDeviceInvoker(fn: DeviceInvoke) {
   relayInvoke = fn
 }
 
-const ACTION_TOOL: Record<DesktopAction["type"], LocalToolName> = {
+const ACTION_TOOL: Record<Exclude<DesktopAction["type"], "wait">, LocalToolName> = {
   click: "mouseClick",
   move: "mouseMove",
   drag: "mouseDrag",
@@ -70,9 +70,29 @@ export class DeviceDriver implements ComputerDriver {
     return this.invoke<ScreenshotPayload>("viewScreen", {})
   }
 
-  act(action: DesktopAction) {
-    const { type, ...input } = action
-    return this.invoke<ScreenshotPayload>(ACTION_TOOL[type], input)
+  // One relay call per action. Only the last one asks for a screenshot; app
+  // versions that don't know noShot send one anyway, and it's ignored.
+  async act(actions: DesktopAction[]): Promise<ActResult> {
+    let completed = 0
+    let error: string | undefined
+    let shot: ScreenshotPayload | undefined
+    for (const [i, action] of actions.entries()) {
+      try {
+        if (action.type === "wait") {
+          await new Promise((r) => setTimeout(r, Math.min(Math.max(action.ms, 0), 5000)))
+        } else {
+          const { type, ...input } = action
+          const last = i === actions.length - 1
+          const result = await this.invoke<ScreenshotPayload | null>(ACTION_TOOL[type], last ? input : { ...input, noShot: true })
+          if (last && result?.base64) shot = result
+        }
+      } catch (err) {
+        error = err instanceof Error ? err.message : String(err)
+        break
+      }
+      completed++
+    }
+    return { ...(shot ?? (await this.screenshot())), completed, ...(error ? { error } : {}) }
   }
 
   openUrl(url: string) {

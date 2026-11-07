@@ -13,6 +13,14 @@ export type DesktopAction =
   | { type: "scroll"; x: number; y: number; direction: "up" | "down" | "left" | "right"; amount?: number }
   | { type: "type"; text: string }
   | { type: "key"; keys: string }
+  | { type: "wait"; ms: number }
+
+// What a batch of actions did, with one screenshot taken after the last one
+export type ActResult = ScreenshotPayload & {
+  completed: number
+  // Why the action after the completed ones failed; later ones didn't run
+  error?: string
+}
 
 // Reads and operates apps through the OS accessibility tree: elements come
 // back with refs, so actions don't depend on pixel positions
@@ -50,8 +58,9 @@ export interface ComputerDriver {
   writeFile(path: string, content: string): Promise<void>
   listFiles(path: string): Promise<FileEntry[]>
   screenshot(): Promise<ScreenshotPayload>
-  // Runs the action and returns a screenshot of the result
-  act(action: DesktopAction): Promise<ScreenshotPayload>
+  // Runs the actions in order, stopping at the first that fails, and returns
+  // a screenshot of the result
+  act(actions: DesktopAction[]): Promise<ActResult>
   openUrl(url: string): Promise<string>
   openApp?(name: string): Promise<string>
   saveLogins?(): Promise<string[]>

@@ -27,10 +27,11 @@ try {
   const d2 = new CloudDisplayDriver(handle, 2)
   await d2.bash("nohup xfce4-terminal >/dev/null 2>&1 &")
   t = Date.now()
-  const shot = await d1.act({ type: "click", x: 300, y: 300 })
+  const shot = await d1.act([{ type: "click", x: 300, y: 300 }])
   results.actMs = Date.now() - t
   results.shotBytes = Buffer.from(shot.base64, "base64").length
-  const shot2 = await d2.act({ type: "type", text: "echo hi from display 2" })
+  const shot2 = await d2.act([{ type: "type", text: "echo hi from display 2" }, { type: "key", keys: "Return" }])
+  results.shot2Completed = shot2.completed
   results.shot2Bytes = Buffer.from(shot2.base64, "base64").length
 
   const ep = await handle.portEndpoint(webPort)
