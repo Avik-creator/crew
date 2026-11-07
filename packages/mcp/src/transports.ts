@@ -8,6 +8,7 @@ import { and, eq, isNotNull } from "drizzle-orm"
 
 import { catalogBySlug } from "./catalog"
 import { ConnectionOAuthProvider } from "./oauth-provider"
+import { assertPublicUrl } from "./url-guard"
 
 export type TransportContext = { userId: string; connection: Connection; server: McpServer }
 export type TransportSpec = MCPClientConfig["transport"]
@@ -28,6 +29,7 @@ const remoteHttp: ConnectorTransport = {
   matches: (s) => s.transport === "http" && s.authMode !== "first_party",
   async open({ connection, server }) {
     if (!server.url) throw new Error(`${server.name} has no URL`)
+    if (server.isCustom) await assertPublicUrl(server.url)
     if (server.authMode === "oauth") {
       const authProvider = new ConnectionOAuthProvider(connection, server, catalogBySlug(server.slug)?.authorizationServer)
       return { type: "http", url: server.url, authProvider }

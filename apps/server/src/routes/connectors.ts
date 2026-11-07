@@ -5,6 +5,7 @@ import {
   disconnect,
   finishConnect,
   firstParty,
+  assertPublicUrl,
   OAUTH_CALLBACK_PATH,
   refreshTools,
   saveSecrets,
@@ -113,6 +114,9 @@ export const connectorRoutes = new Hono<AppEnv>()
       if (!input.deviceId) badRequest("Pick the computer this runs on.")
       const [d] = await db.select().from(devices).where(and(eq(devices.id, input.deviceId), eq(devices.userId, user.id)))
       if (!d) badRequest("That computer isn't linked to your account.")
+    }
+    if (input.transport === "http") {
+      await assertPublicUrl(input.url).catch((err: Error) => badRequest(err.message))
     }
     const [server] = await db
       .insert(mcpServers)
