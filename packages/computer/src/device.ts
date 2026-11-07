@@ -16,6 +16,13 @@ export function setDeviceInvoker(fn: DeviceInvoke) {
   relayInvoke = fn
 }
 
+// Tells the Mac a run was stopped, so it ends what that run left running
+export type DeviceCancel = (deviceId: string, runId: string) => void
+let relayCancel: DeviceCancel | undefined
+export function setDeviceCanceller(fn: DeviceCancel) {
+  relayCancel = fn
+}
+
 const ACTION_TOOL: Record<Exclude<DesktopAction["type"], "wait">, LocalToolName> = {
   click: "mouseClick",
   move: "mouseMove",
@@ -30,12 +37,15 @@ const ACTION_TOOL: Record<Exclude<DesktopAction["type"], "wait">, LocalToolName>
 export class DeviceDriver implements ComputerDriver {
   readonly kind = "device" as const
   readonly apps?: AppControl
+  private used = false
 
   constructor(
     private deviceId: string,
     private ctx: DeviceRunContext,
     features: { apps?: boolean } = {},
+    signal?: AbortSignal,
   ) {
+    signal?.addEventListener("abort", () => this.used && relayCancel?.(deviceId, ctx.runId), { once: true })
     if (features.apps) {
       this.apps = {
         listApps: () => this.invoke("listApps", {}),
@@ -47,6 +57,7 @@ export class DeviceDriver implements ComputerDriver {
 
   private async invoke<T>(tool: LocalToolName, input: Record<string, unknown>): Promise<T> {
     if (!relayInvoke) throw new Error("The device relay isn't running in this process")
+    this.used = true
     return (await relayInvoke(this.deviceId, { ...this.ctx, tool, input })) as T
   }
 

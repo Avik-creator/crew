@@ -1,5 +1,5 @@
 import { startScheduleClock } from "@crew/agent"
-import { maintainComputers, onComputerStatus, setDeviceInvoker } from "@crew/computer"
+import { maintainComputers, onComputerStatus, setDeviceCanceller, setDeviceInvoker } from "@crew/computer"
 import { seedCatalog } from "@crew/mcp"
 import { serve } from "@hono/node-server"
 import { WebSocketServer } from "ws"
@@ -14,6 +14,7 @@ const port = Number(process.env.PORT ?? 8787)
 await seedCatalog().catch((err) => console.error("Couldn't seed connectors:", err))
 onComputerStatus((userId, status) => publish(userId, { type: "computer.status", status }))
 setDeviceInvoker((deviceId, req) => relay.invoke(deviceId, req))
+setDeviceCanceller((deviceId, runId) => relay.cancel(deviceId, runId))
 
 runner.start()
 startScheduleClock(runner)

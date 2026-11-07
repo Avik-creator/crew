@@ -1,6 +1,5 @@
-import { execFile, spawn } from "node:child_process"
+import { execFile, type ChildProcess } from "node:child_process"
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
-import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { promisify } from "node:util"
 
@@ -20,28 +19,18 @@ import { secureStore, serverUrl } from "../store"
 import { apps, findAgentDesktop, installAgentDesktop } from "./apps"
 import { input } from "./input"
 import { McpSessions } from "./mcp"
-import { assertAllowed, expandHome } from "./paths"
+import { assertAllowed } from "./paths"
 import { captureScreen, type ScreenGeometry } from "./screen"
+import { bash, killTree } from "./shell"
 
 const run = promisify(execFile)
-const OUTPUT_CAP = 200_000
+// Stopped runs are remembered so their late calls are turned down; old ones are forgotten
+const KILLED_CAP = 200
+// The kill switch stops every run that used this Mac since the last kill, up to the most recent ones
+const ACTIVE_CAP = 200
 
 type Invoke = Extract<ServerToDevice, { type: "invoke" }>
 export type DeviceStatus = { linked: boolean; online: boolean; name?: string; deviceId?: string; error?: string; appsError?: string }
-
-function bash(command: string, timeoutMs = 120_000, cwd?: string) {
-  return new Promise<{ exitCode: number; stdout: string; stderr: string }>((resolve) => {
-    const child = spawn("/bin/zsh", ["-lc", command], { cwd: cwd ? expandHome(cwd) : homedir(), timeout: timeoutMs })
-    let stdout = ""
-    let stderr = ""
-    child.stdout.on("data", (d) => (stdout = (stdout + d).slice(-OUTPUT_CAP)))
-    child.stderr.on("data", (d) => (stderr = (stderr + d).slice(-OUTPUT_CAP)))
-    child.on("close", (code, signal) =>
-      resolve({ exitCode: code ?? (signal ? 124 : -1), stdout, stderr: signal ? `${stderr}\n(stopped: ${signal})` : stderr }),
-    )
-    child.on("error", (err) => resolve({ exitCode: -1, stdout, stderr: err.message }))
-  })
-}
 
 // Runs bots' tool calls on this Mac. Dials out to the server (nothing listens
 // locally), reconnects with backoff, and honours the kill switch.
@@ -53,7 +42,9 @@ export class DeviceAgent {
   private stopped = false
   private geometry?: ScreenGeometry
   private killed = new Set<string>()
-  private activeRuns = new Set<string>()
+  // Runs that used this Mac since the last kill, oldest use first, with their calls in flight
+  private activeRuns = new Map<string, number>()
+  private children = new Map<string, Set<ChildProcess>>()
   private mcp = new McpSessions((f) => this.send(f))
   status: DeviceStatus = { linked: false, online: false }
   // Whether agent-desktop is installed; set up when the connection opens
@@ -165,12 +156,42 @@ export class DeviceAgent {
 
   // ⌘⇧Esc: stop every run that is using this Mac
   kill() {
-    for (const runId of this.activeRuns) {
-      this.killed.add(runId)
+    for (const runId of this.activeRuns.keys()) {
+      this.stopRun(runId)
       this.send({ type: "kill", runId })
     }
     this.activeRuns.clear()
     hideOverlay()
+  }
+
+  // Turns down the run's later calls and ends the commands it has running
+  private stopRun(runId: string) {
+    this.killed.delete(runId)
+    this.killed.add(runId)
+    if (this.killed.size > KILLED_CAP) this.killed.delete(this.killed.values().next().value!)
+    for (const child of this.children.get(runId) ?? []) killTree(child)
+  }
+
+  // Moves the run to the newest end; past the cap, the least recently used idle run is forgotten
+  private useRun(runId: string, delta: number) {
+    const busy = (this.activeRuns.get(runId) ?? 0) + delta
+    this.activeRuns.delete(runId)
+    this.activeRuns.set(runId, busy)
+    if (this.activeRuns.size <= ACTIVE_CAP) return
+    for (const [id, n] of this.activeRuns) {
+      if (n) continue
+      this.activeRuns.delete(id)
+      return
+    }
+  }
+
+  private track(runId: string, child: ChildProcess) {
+    const set = this.children.get(runId) ?? new Set()
+    this.children.set(runId, set.add(child))
+    return () => {
+      set.delete(child)
+      if (!set.size) this.children.delete(runId)
+    }
   }
 
   private send(frame: DeviceToServer) {
@@ -197,7 +218,7 @@ export class DeviceAgent {
       case "mcp_close":
         return this.mcp.close(frame.sessionId)
       case "cancel":
-        this.killed.add(frame.runId)
+        this.stopRun(frame.runId)
         return
       case "pong":
         return
@@ -209,7 +230,7 @@ export class DeviceAgent {
     if (this.killed.has(frame.runId)) {
       return this.send({ type: "result", id: frame.id, ok: false, error: "Stopped by the person with the kill switch." })
     }
-    this.activeRuns.add(frame.runId)
+    this.useRun(frame.runId, 1)
     let exitCode: number | null = null
     try {
       const output = await this.execute(frame)
@@ -218,6 +239,7 @@ export class DeviceAgent {
     } catch (err) {
       this.send({ type: "result", id: frame.id, ok: false, error: err instanceof Error ? err.message : String(err) })
     } finally {
+      if (this.activeRuns.has(frame.runId)) this.useRun(frame.runId, -1)
       this.send({
         type: "audit",
         runId: frame.runId,
@@ -242,7 +264,7 @@ export class DeviceAgent {
     return this.geometry!.scale
   }
 
-  private async execute({ tool, input: args, botName }: Invoke): Promise<unknown> {
+  private async execute({ tool, input: args, botName, runId }: Invoke): Promise<unknown> {
     const allowed = secureStore().get("allowedPaths") ?? []
     const a = args as Record<string, any>
     const act = async (fn: (scale: number) => Promise<void>) => {
@@ -261,7 +283,7 @@ export class DeviceAgent {
     }
     switch (tool) {
       case "bash":
-        return bash(String(a.command), Number(a.timeoutMs ?? 120_000), a.cwd)
+        return bash(String(a.command), Number(a.timeoutMs ?? 120_000), a.cwd, (child) => this.track(runId, child))
       case "readFile":
         return readFile(assertAllowed(a.path, allowed), "utf8")
       case "writeFile": {

@@ -109,7 +109,7 @@ async function skip(runId: string, reason: string): Promise<TurnResult> {
   return { status: "skipped", runId, reason }
 }
 
-async function driverFor(ctx: Omit<TurnContext, "dispatcher" | "events">): Promise<ComputerDriver> {
+async function driverFor(ctx: Omit<TurnContext, "dispatcher" | "events">, signal?: AbortSignal): Promise<ComputerDriver> {
   const { bot } = ctx
   if (bot.runsOn === "device" && bot.deviceId) {
     const [device] = await db
@@ -121,6 +121,7 @@ async function driverFor(ctx: Omit<TurnContext, "dispatcher" | "events">): Promi
       bot.deviceId,
       { userId: ctx.userId, runId: ctx.runId, botId: bot.id, botName: bot.name, background: ctx.background },
       { apps: device?.capabilities.apps ?? false },
+      signal,
     )
   }
   return new LazyDriver("cloud", () => getDisplayDriver(ctx.userId, bot.displayNumber), {
@@ -223,7 +224,7 @@ export async function runTurn(run: Run, deps: TurnDeps): Promise<TurnResult> {
     connecting = loadConnectorTools({ userId: ctx.userId, botId: bot.id, background })
     const [connectors, driver, builtin, trigger, team, members, memories, history] = await Promise.all([
       connecting,
-      driverFor(ctx),
+      driverFor(ctx, deps.signal),
       builtinApproval({ runsOn: bot.runsOn, deviceId: bot.deviceId }),
       payload.triggerMessageId
         ? db

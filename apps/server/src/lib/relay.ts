@@ -8,7 +8,7 @@ import type { WSContext } from "hono/ws"
 import { publish } from "./bus"
 import { runner } from "./runner"
 
-type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
+type Pending = { deviceId: string; resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
 type Socket = { ws: WSContext; userId: string }
 
 export type InvokeRequest = {
@@ -20,6 +20,8 @@ export type InvokeRequest = {
   input: Record<string, unknown>
   background: boolean
 }
+
+const OFFLINE = "That computer is offline. Open Crew on it to let bots use it."
 
 // Long commands get their own timeout; everything else should be quick
 const timeoutFor = (req: Pick<InvokeRequest, "tool" | "input">) =>
@@ -54,6 +56,13 @@ export class DeviceRelay {
         this.mcp.delete(id)
       }
     }
+    // Calls in flight on it won't get an answer now
+    for (const [id, p] of this.pending) {
+      if (p.deviceId !== deviceId) continue
+      clearTimeout(p.timer)
+      this.pending.delete(id)
+      p.reject(new Error(OFFLINE))
+    }
     await db.update(devices).set({ status: "offline", lastSeenAt: new Date() }).where(eq(devices.id, deviceId))
     publish(current.userId, { type: "device.status", deviceId, status: "offline" })
   }
@@ -68,7 +77,7 @@ export class DeviceRelay {
 
   private send(deviceId: string, frame: ServerToDevice) {
     const s = this.sockets.get(deviceId)
-    if (!s) throw new Error("That computer is offline. Open Crew on it to let bots use it.")
+    if (!s) throw new Error(OFFLINE)
     s.ws.send(JSON.stringify(frame))
   }
 
@@ -144,12 +153,12 @@ export class DeviceRelay {
     return new Promise((resolve, reject) => {
       // A bot only ever works on a Mac its own person linked
       const owner = this.sockets.get(deviceId)?.userId
-      if (owner && owner !== userId) return reject(new Error("That computer is offline. Open Crew on it to let bots use it."))
+      if (owner && owner !== userId) return reject(new Error(OFFLINE))
       const timer = setTimeout(() => {
         this.pending.delete(id)
         reject(new Error(`${req.tool} took too long on the computer`))
       }, timeoutFor(req))
-      this.pending.set(id, { resolve, reject, timer })
+      this.pending.set(id, { deviceId, resolve, reject, timer })
       try {
         this.send(deviceId, { type: "invoke", id, ...req })
       } catch (err) {
@@ -158,6 +167,15 @@ export class DeviceRelay {
         reject(err as Error)
       }
     })
+  }
+
+  // A run was stopped: the Mac ends whatever it is still running for it
+  cancel(deviceId: string, runId: string) {
+    try {
+      this.send(deviceId, { type: "cancel", runId })
+    } catch {
+      // Offline: there is no way to reach it
+    }
   }
 
   // Starts a local-command MCP server on the Mac and binds it to a task socket
