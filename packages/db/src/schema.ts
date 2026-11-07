@@ -1,4 +1,4 @@
-import type { TurnReason } from "@crew/shared"
+import type { TurnPayload, TurnReason } from "@crew/shared"
 import { relations, sql } from "drizzle-orm"
 import {
   boolean,
@@ -288,18 +288,28 @@ export const runs = pgTable(
       .$type<TurnReason>()
       .notNull(),
     status: text("status")
-      .$type<"queued" | "running" | "waiting" | "completed" | "failed" | "cancelled">()
+      .$type<"queued" | "running" | "waiting" | "completed" | "failed" | "cancelled" | "skipped">()
       .notNull()
       .default("queued"),
-    triggerRunId: text("trigger_run_id"),
+    // What the turn was asked to do; the runner starts it from this
+    payload: jsonb("payload").$type<TurnPayload>(),
+    // The server process running it, and how long its claim lasts without a heartbeat
+    owner: text("owner"),
+    leaseUntil: timestamp("lease_until", { withTimezone: true }),
     chainId: text("chain_id"),
     hop: integer("hop").notNull().default(0),
     usage: jsonb("usage").$type<{ inputTokens?: number; outputTokens?: number; steps?: number }>(),
     error: text("error"),
+    // Set when the run is queued, then again when it starts
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: createdAt(),
   },
-  (t) => [index("runs_bot_idx").on(t.botId, t.startedAt), index("runs_user_idx").on(t.userId, t.startedAt)],
+  (t) => [
+    index("runs_bot_idx").on(t.botId, t.startedAt),
+    index("runs_user_idx").on(t.userId, t.startedAt),
+    index("runs_status_idx").on(t.status, t.botId),
+  ],
 )
 
 export const memories = pgTable(
@@ -497,12 +507,13 @@ export const schedules = pgTable(
     runAt: timestamp("run_at", { withTimezone: true }),
     timeZone: text("time_zone").notNull().default("UTC"),
     prompt: text("prompt").notNull(),
-    triggerScheduleId: text("trigger_schedule_id"),
     enabled: boolean("enabled").notNull().default(true),
+    // When it fires next; null once a one-off has fired or the schedule is off
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
     lastRunAt: timestamp("last_run_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index("schedules_user_idx").on(t.userId)],
+  (t) => [index("schedules_user_idx").on(t.userId), index("schedules_due_idx").on(t.nextRunAt)],
 )
 
 // ── Relations (for db.query) ────────────────────────────────────────────────

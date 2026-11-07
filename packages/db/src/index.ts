@@ -24,7 +24,7 @@ function connect() {
   return { pool, db: drizzle(pool, { schema }) }
 }
 
-// Connect on first use, not at import: Trigger.dev indexes task files without env
+// Connect on first use, not at import, so scripts can load env first
 function instance() {
   return (globalThis.__crewDb ??= connect())
 }
