@@ -1,4 +1,4 @@
-import { Brain, CalendarClock, ChevronDown, Inbox, LogOut, Plug, Plus, Search, Settings, Sparkles } from "lucide-react"
+import { Bell, Bot as BotIcon, Brain, CalendarClock, ChevronDown, LogOut, Plug, Plus, Search, Settings, Sparkles, Users } from "lucide-react"
 import { useState, type ReactNode } from "react"
 import { Link, useLocation } from "wouter"
 
@@ -8,24 +8,28 @@ import { useUI } from "@/lib/ui"
 import { cn, shortTime } from "@/lib/utils"
 
 import { AvatarStack, BotAvatar, GroupAvatar } from "./bot-avatar"
-import { Kbd, Tip } from "./ui/misc"
+import { ResizeHandle, useColumnWidth } from "./resize-handle"
+import { Tip } from "./ui/misc"
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "./ui/menu"
 
-function NavItem({ href, icon, label, count }: { href: string; icon: ReactNode; label: string; count?: number }) {
-  const [location] = useLocation()
-  const active = location === href || location.startsWith(`${href}/`)
+// A small icon button in the sidebar's header
+function HeaderButton({ label, onClick, active, count, children }: { label: string; onClick: () => void; active?: boolean; count?: number; children: ReactNode }) {
   return (
-    <Link
-      href={href}
-      className={cn(
-        "flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-[13px] transition-colors [&_svg]:size-4",
-        active ? "bg-hover font-medium text-fg" : "text-muted hover:bg-hover/70 hover:text-fg",
-      )}
-    >
-      {icon}
-      <span className="flex-1 truncate">{label}</span>
-      {count ? <span className="rounded-full bg-accent px-1.5 text-[10.5px] font-semibold leading-[18px] text-accent-fg">{count}</span> : null}
-    </Link>
+    <Tip label={label}>
+      <button
+        onClick={onClick}
+        aria-label={count ? `${label}, ${count} waiting` : label}
+        className={cn(
+          "no-drag relative grid size-7 place-items-center rounded-[10px] text-muted transition-colors hover:bg-hover hover:text-fg [&_svg]:size-[15px] [&_svg]:stroke-[1.8]",
+          active && "bg-hover text-fg",
+        )}
+      >
+        {children}
+        {count ? (
+          <span className="absolute -right-0.5 -top-0.5 min-w-3.5 rounded-full bg-accent px-1 text-[9.5px] font-semibold leading-3.5 text-accent-fg">{count}</span>
+        ) : null}
+      </button>
+    </Tip>
   )
 }
 
@@ -55,23 +59,26 @@ function ThreadItem({ thread, label, avatar, placeholder }: { thread: Thread; la
   const [location] = useLocation()
   const active = location === `/t/${thread.id}`
   const working = thread.working.length > 0
+  const unread = thread.unread && !active
   return (
     <Link
       href={`/t/${thread.id}`}
-      className={cn(
-        "flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition-colors",
-        active ? "bg-fg/8 text-fg" : "text-muted hover:bg-fg/5 hover:text-fg",
-      )}
+      className={cn("flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 transition-colors", active ? "bg-hover" : "hover:bg-fg/[0.05]")}
     >
       {avatar}
       <span className="min-w-0 flex-1">
-        <span className="flex items-baseline gap-2">
-          <span className={cn("min-w-0 flex-1 truncate text-[13px]", (thread.unread || active) && "font-medium text-fg")}>{label}</span>
-          {thread.lastMessageAt ? <span className="shrink-0 text-[11px] text-faint">{shortTime(thread.lastMessageAt)}</span> : null}
+        <span className="flex items-center gap-2">
+          <span className={cn("min-w-0 flex-1 truncate text-[13px] text-fg", unread ? "font-semibold" : "font-medium")}>{label}</span>
+          {thread.lastMessageAt ? <span className="shrink-0 text-[12px] tabular-nums text-faint">{shortTime(thread.lastMessageAt)}</span> : null}
+          {unread ? <span className="size-2 shrink-0 rounded-full bg-accent" aria-label="Unread" /> : null}
         </span>
-        <span className="mt-0.5 flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-[12px] text-faint">{plainPreview(thread.lastMessagePreview) || (working ? "Working" : (placeholder ?? ""))}</span>
-          {working ? <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="Working" /> : thread.unread && !active ? <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-label="Unread" /> : null}
+        <span
+          className={cn(
+            "mt-1 block truncate text-[12px]",
+            working ? "font-semibold text-accent" : unread ? "font-medium text-fg/75" : "text-muted",
+          )}
+        >
+          {working ? "Working…" : plainPreview(thread.lastMessagePreview) || placeholder || ""}
         </span>
       </span>
     </Link>
@@ -81,15 +88,19 @@ function ThreadItem({ thread, label, avatar, placeholder }: { thread: Thread; la
 function Group({ title, action, children, defaultOpen = true }: { title: string; action?: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div className="mt-4">
-      <div className="group/h flex h-6 items-center justify-between px-2.5">
-        <button onClick={() => setOpen(!open)} className="flex items-center gap-1 text-[11px] font-medium tracking-[0.04em] text-faint uppercase hover:text-muted">
+    <div className="pt-3 pb-0.5">
+      <div className="flex items-center justify-between gap-2 pr-1">
+        <button
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+          className="flex flex-1 items-center gap-1 rounded-lg px-2.5 py-1 text-left text-[12px] font-medium text-muted transition-colors hover:bg-hover"
+        >
           {title}
-          <ChevronDown className={cn("size-3 transition-transform", !open && "-rotate-90")} />
+          <ChevronDown className={cn("size-3.5 transition-transform", !open && "-rotate-90")} />
         </button>
         {action}
       </div>
-      {open ? <div className="mt-1 space-y-px">{children}</div> : null}
+      {open ? <div className="mt-0.5 flex flex-col gap-0.5">{children}</div> : null}
     </div>
   )
 }
@@ -101,6 +112,8 @@ export function Sidebar({ onSignOut }: { onSignOut: () => void }) {
   const threads = useThreads()
   const approvals = useApprovals()
   const takeovers = useTakeovers()
+  const [location, navigate] = useLocation()
+  const { width, setWidth } = useColumnWidth("crew:sidebar-width", 300, 240, 480)
   const botList = (bots.data ?? []).filter((b) => b.status !== "hidden")
   const byId = new Map(botList.map((b) => [b.id, b]))
   const all = threads.data ?? []
@@ -110,45 +123,53 @@ export function Sidebar({ onSignOut }: { onSignOut: () => void }) {
   const groups = all.filter((t) => t.kind === "group")
   const botChats = all.filter((t) => t.kind === "bot")
   const inboxCount = (approvals.data?.length ?? 0) + (takeovers.data?.length ?? 0)
+  const initial = (me.data?.user.name ?? "?").slice(0, 1).toUpperCase()
 
   return (
-    <aside className="flex h-full w-[272px] shrink-0 flex-col border-r border-line bg-sidebar">
-      <div className="drag h-[52px] shrink-0" />
-      <div className="px-3">
-        <button
-          onClick={ui.openPalette}
-          className="flex h-7 w-full items-center gap-2 rounded-md bg-fg/5 px-2 text-[13px] text-faint transition-colors hover:bg-fg/8 hover:text-muted"
-        >
-          <Search className="size-3.5" />
-          <span className="flex-1 text-left">Search</span>
-          <Kbd>⌘K</Kbd>
-        </button>
-        <div className="mt-3 space-y-px">
-          <NavItem href="/inbox" icon={<Inbox />} label="Inbox" count={inboxCount} />
+    <aside className="relative flex h-full shrink-0 flex-col border-r border-fg/[0.06] bg-sidebar" style={{ width }}>
+      {/* The traffic lights sit in the first 72px; the rest of the strip drags the window */}
+      <div className="drag flex shrink-0 items-center justify-between px-[18px] pb-3 pt-4">
+        <span className="h-3 w-[72px] shrink-0" />
+        <div className="flex items-center gap-0.5">
+          <HeaderButton label="Search  ⌘K" onClick={ui.openPalette}>
+            <Search />
+          </HeaderButton>
+          <HeaderButton label="Inbox" onClick={() => navigate("/inbox")} active={location === "/inbox"} count={inboxCount}>
+            <Bell />
+          </HeaderButton>
+          <Menu>
+            <Tip label="New">
+              <MenuTrigger asChild>
+                <button
+                  aria-label="New bot or group"
+                  className="no-drag grid size-7 place-items-center rounded-[10px] text-muted transition-colors hover:bg-hover hover:text-fg [&_svg]:size-[15px] [&_svg]:stroke-[1.8]"
+                >
+                  <Plus />
+                </button>
+              </MenuTrigger>
+            </Tip>
+            <MenuContent align="end" className="w-44">
+              <MenuItem onSelect={() => ui.editBot()}>
+                <BotIcon /> New bot
+              </MenuItem>
+              <MenuItem onSelect={() => ui.editGroup()}>
+                <Users /> New group
+              </MenuItem>
+            </MenuContent>
+          </Menu>
         </div>
       </div>
 
-      <div className="mt-1 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-2.5">
         {chief && chiefThread ? (
-          <div className="mt-3">
-            <ThreadItem
-              thread={chiefThread}
-              label={chief.name}
-              avatar={<ChiefAvatar bot={chief} working={chiefThread.working.length > 0} />}
-              placeholder="Ask me to set up bots for you"
-            />
-          </div>
+          <ThreadItem
+            thread={chiefThread}
+            label={chief.name}
+            avatar={<ChiefAvatar bot={chief} working={chiefThread.working.length > 0} size="lg" />}
+            placeholder="Ask me to set up bots for you"
+          />
         ) : null}
-        <Group
-          title="Bots"
-          action={
-            <Tip label="New bot">
-              <button onClick={() => ui.editBot()} className="rounded p-0.5 text-faint hover:bg-hover hover:text-fg" aria-label="New bot">
-                <Plus className="size-3.5" />
-              </button>
-            </Tip>
-          }
-        >
+        <Group title="Bots">
           {direct.map((t) => {
             const bot = byId.get(t.botIds[0] ?? "")
             if (!bot) return null
@@ -157,37 +178,23 @@ export function Sidebar({ onSignOut }: { onSignOut: () => void }) {
                 key={t.id}
                 thread={t}
                 label={bot.name}
-                avatar={<BotAvatar bot={bot} size="md" working={t.working.length > 0} className={bot.status === "paused" ? "opacity-50" : ""} />}
+                avatar={<BotAvatar bot={bot} size="lg" working={t.working.length > 0} className={bot.status === "paused" ? "opacity-50" : ""} />}
               />
             )
           })}
           {!direct.length ? (
-            <button onClick={() => ui.editBot()} className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-[13px] text-muted hover:bg-hover">
-              <span className="grid size-6 place-items-center rounded-full border border-dashed border-line-strong">
-                <Plus className="size-3" />
+            <button onClick={() => ui.editBot()} className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-[13px] text-muted hover:bg-fg/[0.05]">
+              <span className="grid size-10 place-items-center rounded-full border border-dashed border-line-strong">
+                <Plus className="size-4" />
               </span>
               Create your first bot
             </button>
           ) : null}
         </Group>
 
-        <Group
-          title="Groups"
-          action={
-            <Tip label="New group">
-              <button onClick={() => ui.editGroup()} className="rounded p-0.5 text-faint hover:bg-hover hover:text-fg" aria-label="New group">
-                <Plus className="size-3.5" />
-              </button>
-            </Tip>
-          }
-        >
+        <Group title="Groups">
           {groups.map((t) => (
-            <ThreadItem
-              key={t.id}
-              thread={t}
-              label={t.name ?? "Group"}
-              avatar={<GroupAvatar bots={t.botIds.map((id) => byId.get(id))} size="md" />}
-            />
+            <ThreadItem key={t.id} thread={t} label={t.name ?? "Group"} avatar={<GroupAvatar bots={t.botIds.map((id) => byId.get(id))} size="lg" />} />
           ))}
           {!groups.length ? <p className="px-2.5 py-1 text-[12px] text-faint">Bots work together in groups.</p> : null}
         </Group>
@@ -196,40 +203,39 @@ export function Sidebar({ onSignOut }: { onSignOut: () => void }) {
           <Group title="Between bots" defaultOpen={false}>
             {botChats.map((t) => {
               const pair = t.botIds.map((id) => byId.get(id))
-              return (
-                <ThreadItem
-                  key={t.id}
-                  thread={t}
-                    label={pair.map((b) => b?.name ?? "?").join(" ↔ ")}
-                  avatar={<AvatarStack bots={pair} size="xs" />}
-                />
-              )
+              return <ThreadItem key={t.id} thread={t} label={pair.map((b) => b?.name ?? "?").join(" ↔ ")} avatar={<AvatarStack bots={pair} size="md" />} />
             })}
           </Group>
         ) : null}
       </div>
 
-      <div className="space-y-px border-t border-line px-3 py-2">
-        <NavItem href="/connections" icon={<Plug />} label="Connections" />
-        <NavItem href="/schedules" icon={<CalendarClock />} label="Schedules" />
-        <NavItem href="/memory" icon={<Brain />} label="Memory" />
-        <NavItem href="/settings" icon={<Settings />} label="Settings" />
-      </div>
-      <div className="border-t border-line p-2">
+      <div className="flex shrink-0 items-center gap-2 px-2.5 py-3">
         <Menu>
-          <MenuTrigger className="flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left hover:bg-hover">
-            <span className="grid size-7 place-items-center rounded-full bg-fg text-[11px] font-semibold text-bg">
-              {(me.data?.user.name ?? "?").slice(0, 1).toUpperCase()}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12.5px] font-medium">{me.data?.user.name}</span>
-              <span className="block truncate text-[11px] text-faint">{me.data?.user.email}</span>
-            </span>
+          <MenuTrigger
+            className="grid size-9 shrink-0 place-items-center rounded-full border border-line bg-hover text-[14px] font-medium transition-colors hover:border-fg/30"
+            aria-label="Account and settings"
+          >
+            {initial}
           </MenuTrigger>
-          <MenuContent align="start" className="w-56">
+          <MenuContent align="start" className="w-64">
+            <div className="px-2.5 py-2">
+              <p className="truncate text-[13px] font-medium">{me.data?.user.name}</p>
+              <p className="truncate text-[12px] text-faint">{me.data?.user.email}</p>
+            </div>
+            <MenuSeparator />
             <MenuItem asChild>
               <Link href="/settings">
                 <Settings /> Settings
+              </Link>
+            </MenuItem>
+            <MenuItem asChild>
+              <Link href="/schedules">
+                <CalendarClock /> Schedules
+              </Link>
+            </MenuItem>
+            <MenuItem asChild>
+              <Link href="/memory">
+                <Brain /> Memory
               </Link>
             </MenuItem>
             <MenuSeparator />
@@ -238,7 +244,18 @@ export function Sidebar({ onSignOut }: { onSignOut: () => void }) {
             </MenuItem>
           </MenuContent>
         </Menu>
+        <Link
+          href="/connections"
+          className={cn(
+            "flex h-9 min-w-0 flex-1 items-center justify-between gap-2 rounded-[10px] border border-line-strong bg-hover px-3 text-[13px] font-medium transition-colors hover:bg-fg/12",
+            location === "/connections" && "border-fg/30",
+          )}
+        >
+          <span className="truncate">Connect apps</span>
+          <Plug className="size-4 shrink-0 text-muted" />
+        </Link>
       </div>
+      <ResizeHandle side="end" width={width} onWidth={setWidth} label="Resize sidebar" />
     </aside>
   )
 }
