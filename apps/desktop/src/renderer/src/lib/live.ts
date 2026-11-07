@@ -13,14 +13,14 @@ const emit = () => listeners.forEach((l) => l())
 export const liveRuns = {
   add(threadId: string, run: ActiveRun) {
     const list = runs[threadId] ?? []
-    if (ended.has(run.triggerRunId) || list.some((r) => r.triggerRunId === run.triggerRunId)) return
+    if (ended.has(run.runId) || list.some((r) => r.runId === run.runId)) return
     runs = { ...runs, [threadId]: [...list.filter((r) => r.botId !== run.botId), run] }
     emit()
   },
   remove(threadId: string, botId: string) {
     const list = runs[threadId]
     if (!list) return
-    for (const r of list) if (r.botId === botId) ended.add(r.triggerRunId)
+    for (const r of list) if (r.botId === botId) ended.add(r.runId)
     runs = { ...runs, [threadId]: list.filter((r) => r.botId !== botId) }
     emit()
   },

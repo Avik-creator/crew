@@ -38,8 +38,6 @@
     "@tiptap/pm": "3.32.0",
     "@tiptap/react": "3.32.0",
     "@tiptap/suggestion": "3.32.0",
-    "@trigger.dev/react-hooks": "4.8.3",
-    "@trigger.dev/sdk": "4.8.3",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@types/ws": "^8.18.1",

@@ -1,80 +1,77 @@
-import { TRIGGER } from "@crew/shared"
-import { useQuery } from "@tanstack/react-query"
-import { useRealtimeStream } from "@trigger.dev/react-hooks"
+import { fetchEventSource } from "@microsoft/fetch-event-source"
 import { readUIMessageStream, type UIMessage, type UIMessageChunk } from "ai"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 
-import { api } from "./api"
+import { serverBase, sessionToken } from "./api"
 
-function asChunk(part: unknown): UIMessageChunk | null {
-  if (!part || typeof part !== "object") return null
-  const record = part as { type?: unknown; data?: unknown }
-  if (typeof record.type === "string" && record.type !== "part") return part as UIMessageChunk
-  if (record.data && typeof record.data === "object" && typeof (record.data as { type?: unknown }).type === "string") {
-    return record.data as UIMessageChunk
-  }
-  return null
-}
+// A response that retrying won't fix, like a run that isn't yours
+class StreamClosed extends Error {}
 
 // The reply a bot is writing right now, rebuilt from the run's UI chunks.
-// Chunks arrive through Trigger.dev realtime with a read-only token.
-export function useLiveMessage(triggerRunId: string) {
-  const token = useQuery({
-    queryKey: ["run-token", triggerRunId],
-    queryFn: () => api<{ token: string }>(`/runs/${triggerRunId}/token`),
-    staleTime: 60 * 60_000,
-  })
-  const { parts } = useRealtimeStream<UIMessageChunk>(triggerRunId, TRIGGER.uiStream, {
-    accessToken: token.data?.token,
-    enabled: !!token.data,
-    timeoutInSeconds: 600,
-    baseURL: import.meta.env.RENDERER_VITE_TRIGGER_API_URL,
-  })
+// The server streams them with their index as the event id, so a dropped
+// connection resumes from the last chunk it got.
+export function useLiveMessage(runId: string) {
   const [message, setMessage] = useState<UIMessage | null>(null)
-  const feed = useRef<{ controller: ReadableStreamDefaultController<UIMessageChunk>; seen: number } | null>(null)
 
-  // One reader for the whole run. Each chunk is applied once, and the screen
-  // updates at most once a frame however fast the chunks come.
   useEffect(() => {
+    const ctrl = new AbortController()
     let frame = 0
     let latest: UIMessage | null = null
-    let closed = false
+    let feed: ReadableStreamDefaultController<UIMessageChunk> | undefined
     const stream = new ReadableStream<UIMessageChunk>({
       start(controller) {
-        feed.current = { controller, seen: 0 }
+        feed = controller
       },
     })
+    const close = () => {
+      try {
+        feed?.close()
+      } catch {
+        // already closed
+      }
+    }
+
+    // One reader for the whole run. The screen updates at most once a frame
+    // however fast the chunks come, and a bad chunk is skipped (onError).
     void (async () => {
-      // A bad chunk is skipped (onError), the rest still render
       for await (const next of readUIMessageStream({ stream, onError: () => {} })) {
         latest = next
         frame ||= requestAnimationFrame(() => {
           frame = 0
-          if (!closed) setMessage(latest)
+          if (!ctrl.signal.aborted) setMessage(latest)
         })
       }
     })()
-    return () => {
-      closed = true
-      cancelAnimationFrame(frame)
-      try {
-        feed.current?.controller.close()
-      } catch {
-        // already closed
-      }
-      feed.current = null
-    }
-  }, [triggerRunId])
 
-  // Hand the reader only the chunks it hasn't seen
-  useEffect(() => {
-    const f = feed.current
-    if (!f || !parts) return
-    for (; f.seen < parts.length; f.seen++) {
-      const chunk = asChunk(parts[f.seen])
-      if (chunk) f.controller.enqueue(chunk)
+    void fetchEventSource(`${serverBase()}/runs/${runId}/stream`, {
+      headers: { authorization: `Bearer ${sessionToken()}` },
+      signal: ctrl.signal,
+      openWhenHidden: true,
+      async onopen(res) {
+        if (!res.ok) throw new StreamClosed(`Live reply unavailable (${res.status})`)
+      },
+      onmessage(msg) {
+        if (msg.event !== "chunk") return
+        try {
+          feed?.enqueue(JSON.parse(msg.data) as UIMessageChunk)
+        } catch {
+          // ignore a malformed chunk
+        }
+      },
+      // The server ends the stream when the turn is done
+      onclose: close,
+      onerror(err) {
+        if (err instanceof StreamClosed) throw err
+        return 1000
+      },
+    }).catch(close)
+
+    return () => {
+      ctrl.abort()
+      cancelAnimationFrame(frame)
+      close()
     }
-  }, [parts])
+  }, [runId])
 
   return message
 }

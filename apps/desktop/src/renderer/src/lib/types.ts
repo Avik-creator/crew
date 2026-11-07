@@ -174,4 +174,4 @@ export type SearchResults = {
   threads: { id: string; name: string | null; kind: Thread["kind"] }[]
 }
 
-export type ActiveRun = { botId: string; triggerRunId: string }
+export type ActiveRun = { botId: string; runId: string }

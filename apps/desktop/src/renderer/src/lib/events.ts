@@ -23,7 +23,7 @@ function handle(event: AppEvent) {
       invalidate(keys.schedules)
       return
     case "run.started":
-      liveRuns.add(event.threadId, { botId: event.botId, triggerRunId: event.triggerRunId })
+      liveRuns.add(event.threadId, { botId: event.botId, runId: event.runId })
       invalidate(keys.threads)
       return
     case "run.finished":

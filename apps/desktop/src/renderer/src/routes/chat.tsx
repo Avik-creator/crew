@@ -23,12 +23,12 @@ import { useUI } from "@/lib/ui"
 import { cn, errorMessage } from "@/lib/utils"
 
 function LiveReply({ run, bot, layout, onMessageId }: { run: ActiveRun; bot: Bot | undefined; layout: ChatLayout; onMessageId: (id: string | null) => void }) {
-  const message = useLiveMessage(run.triggerRunId)
+  const message = useLiveMessage(run.runId)
   const approvals = useApprovals()
   useEffect(() => onMessageId(message?.id ?? null), [message?.id, onMessageId])
   return (
     <Message
-      id={message?.id ?? run.triggerRunId}
+      id={message?.id ?? run.runId}
       author={{ kind: "bot", bot }}
       parts={message?.parts ?? []}
       streaming
@@ -208,7 +208,7 @@ export function ChatRoute({ threadId }: { threadId: string }) {
 
   // Pick up turns that were already running when the thread opened
   useEffect(() => {
-    for (const r of thread?.activeRuns ?? []) if (r.triggerRunId) liveRuns.add(threadId, r)
+    for (const r of thread?.activeRuns ?? []) liveRuns.add(threadId, r)
   }, [threadId, thread?.activeRuns])
 
   const send = useAction((msg: ComposerSend) =>
@@ -250,7 +250,7 @@ export function ChatRoute({ threadId }: { threadId: string }) {
   }
 
   const stop = async () => {
-    await Promise.all(live.map((r) => api(`/runs/${r.triggerRunId}/cancel`, { method: "POST" }).catch(() => {})))
+    await Promise.all(live.map((r) => api(`/runs/${r.runId}/cancel`, { method: "POST" }).catch(() => {})))
     for (const r of live) liveRuns.remove(threadId, r.botId)
   }
 
@@ -261,7 +261,7 @@ export function ChatRoute({ threadId }: { threadId: string }) {
   const stored = messages.data ?? []
   // A finished run leaves its id in liveIds. Only a run still on screen should hide the saved row.
   const liveMessageIds = new Set(live.flatMap((r) => {
-    const id = liveIds[r.triggerRunId]
+    const id = liveIds[r.runId]
     return id ? [id] : []
   }))
   const shown = stored.filter((m) => !liveMessageIds.has(m.id))
@@ -355,11 +355,11 @@ export function ChatRoute({ threadId }: { threadId: string }) {
                   ) : null}
                   {live.map((r) => (
                     <LiveReply
-                      key={r.triggerRunId}
+                      key={r.runId}
                       run={r}
                       bot={byId.get(r.botId)}
                       layout={layout}
-                      onMessageId={(id) => setLiveIds((s) => (s[r.triggerRunId] === id ? s : { ...s, [r.triggerRunId]: id }))}
+                      onMessageId={(id) => setLiveIds((s) => (s[r.runId] === id ? s : { ...s, [r.runId]: id }))}
                     />
                   ))}
                   {pendingTakeovers.map((t) => (
