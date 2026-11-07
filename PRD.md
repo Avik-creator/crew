@@ -63,7 +63,7 @@ The product model follows xAI's **Grok Bot**.
 | Audience | Private: you + team, no billing |
 | Auth | **Better Auth** (on the backend, data in Neon) |
 | LLM | **Neon AI Gateway** via `@neon/ai-sdk-provider` |
-| Where agents run | **Cloud backend** (Trigger.dev); the desktop app is a client |
+| Where agents run | **The backend** (`apps/server` runs every turn itself; Trigger.dev until 2026-11-07, see §14.2); the desktop app is a client |
 | Computer | **One shared cloud computer per person**, one screen per bot |
 | Computer provider | **E2B** (primary): memory-preserving pause/resume, custom templates, Firecracker microVMs. Behind a `ComputerProvider` interface so **Daytona** can be swapped in (§8.1) |
 | Local mode | A bot can run on **your Mac** instead; the agent stays in the cloud and calls tools on your Mac through the **device bridge** (outbound WebSocket from the desktop app) |
@@ -160,6 +160,8 @@ Priority: **P0** = MVP, **P1** = v1, **P2** = later.
 
 ## 6. Architecture
 
+The flows in 6.4 to 6.8 are the original plan. Turns now run in `apps/server` instead of Trigger.dev; §14.2 records what changed.
+
 ### 6.1 System overview
 
 ```mermaid
@@ -178,16 +180,16 @@ flowchart LR
 
     DEV <-->|outbound wss, device token| RELAY
 
-    subgraph Trigger["Trigger.dev (tasks)"]
-        CHAT[chat agent<br/>direct + group turns]
-        WAKE[bot-wake task]
+    subgraph Runner["Turn runner (in apps/server)"]
+        CHAT[bot turns<br/>direct + group]
+        WAKE[bot-to-bot wakes]
         ROUTER[router step]
-        SCHED[schedules]
-        IDLE[computer idle/stop cron]
+        SCHED[schedule clock]
+        IDLE[computer check]
     end
 
     R <-->|HTTPS + SSE| API
-    R <-->|Trigger realtime stream| CHAT
+    R <-->|SSE run stream| CHAT
     R -->|noVNC wss| API
     API -->|screen proxy + E2B traffic token| SBX
     M -->|system browser| OAUTH
@@ -205,14 +207,14 @@ flowchart LR
     CHAT -->|local tools, device MCP| RELAY
     WAKE -->|local tools, device MCP| RELAY
     SBX -.->|stdio MCP via HTTP bridge| CHAT
-    API -->|trigger tasks| Trigger
+    API -->|queue runs in Postgres| Runner
 ```
 
 **Principles**
 - The **desktop app is a client.** It holds no secrets beyond the user's session token (stored with Electron `safeStorage`).
-- **Agents run on Trigger.dev** so turns survive app close, redeploys and long desktop tasks, and so bots can wake while you're away.
+- **Agents run on the backend** so turns survive app close and long desktop tasks, and so bots can wake while you're away. A run is a Postgres row, claimed under a per-bot lock and kept alive by a heartbeat.
 - **Neon Postgres is the source of truth** for bots, threads, messages, memory, connections and approvals.
-- **Secrets never reach the computer** for remote connectors: MCP OAuth tokens and gateway keys live only on the backend and in Trigger.dev env. Exception, shown in the UI: env vars of a stdio server you choose to run **on the cloud computer** are injected into that process. Env vars of stdio servers on **your Mac** stay on your Mac (keychain).
+- **Secrets never reach the computer** for remote connectors: MCP OAuth tokens and gateway keys live only on the backend. Exception, shown in the UI: env vars of a stdio server you choose to run **on the cloud computer** are injected into that process. Env vars of stdio servers on **your Mac** stay on your Mac (keychain).
 - **One agent runtime.** Local mode does not run a second agent loop on the laptop. The cloud agent calls tools on the device through the relay, so durability, transcripts, memory and bot-to-bot all work the same.
 - **The laptop never accepts inbound connections.** The device agent dials out to the relay; nothing listens on your Mac.
 
@@ -224,13 +226,13 @@ flowchart LR
 | Desktop | Electron + `electron-vite`, React 19, Tailwind CSS 4, shadcn/ui, TanStack Router + Query, `@ai-sdk/react` (`useChat`), `@novnc/novnc`, `electron-builder` (+ auto-update later) |
 | Device agent | Electron main process: `child_process` (shell), `desktopCapturer` (screenshots), a native input library for mouse/keyboard (e.g. nut.js; chosen in Phase 0), `@modelcontextprotocol/sdk` `StdioClientTransport` (local stdio servers), `ws` client, `globalShortcut` (kill switch) |
 | Backend API | Hono on Node, Better Auth, Zod, typed client (`hono/client`) shared with the desktop app, WebSocket device relay |
-| Agents | Trigger.dev v4 (`chat.agent`, tasks, queues, wait tokens, schedules), AI SDK v7 |
+| Agents | AI SDK v7, run by our own turn runner in `apps/server` (Postgres-backed queue, `croner` for schedules) |
 | LLM | `@neon/ai-sdk-provider` → Neon AI Gateway |
 | MCP | `@ai-sdk/mcp` (`createMCPClient`, HTTP transport, `authProvider`, `auth()`) |
 | Computer | **E2B** SDK (`e2b` + `@e2b/desktop`: sandbox create/connect/pause, commands, files, `getHost(port)`, traffic access token) with a custom E2B template. Alternative provider: `@daytona/sdk` |
 | DB | Neon Postgres, Drizzle ORM + drizzle-kit (pgvector later) |
-| Observability | Sentry (desktop, server, tasks), Trigger.dev run traces |
-| Hosting | Backend on Railway or Fly; tasks on Trigger.dev Cloud; desktop builds via GitHub Releases |
+| Observability | Sentry (desktop, server), the `runs` table |
+| Hosting | Backend on Railway or Fly (one long-lived process); desktop builds via GitHub Releases |
 
 ### 6.3 Repository layout
 
@@ -244,14 +246,9 @@ grok-bot-clone/
       src/preload/      typed IPC bridge
       src/renderer/     React UI (routes: chats, bots, groups, connections, devices, settings)
     server/             Hono API + Better Auth + MCP OAuth callbacks + SSE + device relay (ws)
-    tasks/              Trigger.dev project (trigger.config.ts)
-      src/chat.ts         chat agent (direct + group turns)
-      src/bot-wake.ts     async bot-to-bot wakes
-      src/schedules.ts    user schedules
-      src/computer-idle.ts stop idle computers
   packages/
     db/                 Drizzle schema, client, migrations
-    agent/              prompts, tool sets, model wrapper, router (shared by tasks)
+    agent/              prompts, tool sets, model wrapper, router, turn runner, schedules
       src/model.ts        Neon gateway wrapper (from ai-teammates)
       src/prompts.ts      buildInstructions, group/memory/collab rules
       src/tools/computer.ts  shell/files/mouse/keyboard/screen; one interface,
@@ -382,8 +379,8 @@ messages
 
 runs
   id, userId, botId, threadId, trigger (chat|wake|schedule|group),
-  status (queued|running|waiting|completed|failed|cancelled),
-  triggerRunId, usage jsonb, error?, startedAt, completedAt
+  status (queued|running|waiting|completed|failed|cancelled|skipped),
+  payload jsonb, owner?, leaseUntil?, usage jsonb, error?, startedAt, completedAt, createdAt
 
 run_steps
   id, runId, stepNumber, type (model|tool), toolName?, input jsonb,
@@ -434,7 +431,7 @@ browser_sessions
   id, userId, domain, storageStatePath (on computer), updatedAt
 
 schedules (P2)
-  id, userId, botId, cron | runAt, prompt, triggerScheduleId, enabled
+  id, userId, botId, cron | runAt, timeZone, prompt, enabled, nextRunAt, lastRunAt
 ```
 
 Encryption: AES-256-GCM with a server-side key (`ENCRYPTION_KEY`), applied to `tokens`, `clientInfo` and `codeVerifier`.
@@ -542,7 +539,7 @@ Local mode checks (on a Mac, in a bare Electron app):
 **Fallback** if multi-display fails on both providers: one sandbox per bot plus a **shared volume** mounted at `/workspace` (shared files; logins via storage-state files on the volume). E2B volumes are private beta (request access early, during Phase 0); Daytona volumes are GA but slower than local disk, last write wins, no databases on them.
 
 ### 8.7 Local mode: model
-- A bot with `runsOn = device` uses **your Mac** for every computer tool. The agent loop still runs in the cloud (Trigger.dev); only tool execution happens on the Mac.
+- A bot with `runsOn = device` uses **your Mac** for every computer tool. The agent loop still runs on the backend; only tool execution happens on the Mac.
 - One Mac = one `devices` row. You can register more than one (e.g. laptop + desktop) and choose per bot.
 - Local mode only works while the desktop app is running and the Mac is awake. The UI shows device status on the bot.
 - Bots in local mode can still message other bots and join groups. A local bot's wake waits for its device.
@@ -800,7 +797,7 @@ Every app goes through the generic MCP layer. Which tier depends on what exists 
 | Risk | Mitigation |
 |---|---|
 | Teammates accessing each other's data | Per-user computers; every query scoped by `userId`; shared bots ask before using another person's accounts |
-| Secrets leaking to the computer or model | MCP tokens and gateway keys only on backend/Trigger env; encrypted at rest; sanitized out of `run_steps` |
+| Secrets leaking to the computer or model | MCP tokens and gateway keys only on the backend; encrypted at rest; sanitized out of `run_steps` |
 | Prompt injection from issue text, web pages, MCP results | Approval required for writes; untrusted content labeled in prompts; custom servers ask for every tool by default |
 | SSRF via custom MCP URLs | AI SDK `redirect: 'error'` default; block private IP ranges unless the user approves; validate auth server origin |
 | Runaway bot loops and spend | Hop limit, daily wake budget, step limit, wall-time limit, "ask before messaging" rule |
@@ -873,13 +870,25 @@ All phases from 0 to 10 are built in the repo (`github.com/Avik-creator/crew`, p
 
 **Not done yet:** a live end-to-end turn with real keys, live OAuth connections, real Mac input, Windows/Linux packaging, code signing and notarization, and Sentry.
 
+### 14.2 Moving off Trigger.dev (2026-11-07)
+
+Turns, schedules and the computer check now run in `apps/server`, and `apps/tasks` is gone. The idea comes from Rakazo, an open-source app of the same kind, which starts a run in the process that makes it due and keeps Postgres as the only queue. The reasons: a reply waited up to about 30 s in Trigger's dev queue before it started, development needed a third process, and every turn depended on a hosted service.
+
+- **Runs:** `TurnRunner` (`packages/agent/src/runner.ts`) inserts a `queued` row with the payload and starts it right away if the bot is free. A claim takes a per-bot advisory lock, so each bot runs one turn at a time. A running turn renews `leaseUntil` every 5 s.
+- **Crashes:** a sweep every 5 s fails runs whose lease lapsed and leaves a note in the chat. They are not replayed, because a turn may already have sent an email or clicked something (the same reason the Trigger config never retried). Shutting the server down ends its running turns the same way at once. Queued turns start in the next process.
+- **Live replies:** chunks go into an in-memory buffer per run and out over `GET /runs/:id/stream` (SSE). Each event's id is the chunk index, so a reconnecting app resumes with `Last-Event-ID`. The app no longer needs a Trigger token.
+- **Cancel and the kill switch** abort the turn in-process.
+- **Schedules:** a `nextRunAt` column and a 15 s clock. Moving `nextRunAt` claims a firing, so it happens once. A firing missed while the server was down runs once when it is back. `croner` computes cron times in the person's time zone. "Run now" no longer turns a recurring schedule off.
+- **Device tools** call the relay in-process, so `/internal/events`, `/internal/devices/:id/invoke` and `INTERNAL_API_SECRET` are gone.
+- **Removed:** `apps/tasks`, `@trigger.dev/sdk`, `@trigger.dev/react-hooks`, `TRIGGER_SECRET_KEY`, `TRIGGER_PROJECT_REF`.
+
 ---
 
 ## 15. Environment and accounts (gathered at the end)
 
 ```bash
 # Neon
-DATABASE_URL=                 # pooled (app, tasks)
+DATABASE_URL=                 # pooled (app)
 DATABASE_URL_UNPOOLED=        # drizzle-kit
 NEON_AI_GATEWAY_BASE_URL=
 NEON_AI_GATEWAY_TOKEN=
@@ -889,10 +898,6 @@ BETTER_AUTH_SECRET=
 BETTER_AUTH_URL=              # backend public URL
 ALLOWED_EMAILS= / ALLOWED_DOMAIN=
 
-# Trigger.dev
-TRIGGER_SECRET_KEY=
-TRIGGER_PROJECT_REF=
-
 # Cloud computer
 COMPUTER_PROVIDER=e2b         # e2b | daytona
 E2B_API_KEY=
@@ -900,7 +905,6 @@ E2B_TEMPLATE_ID=              # our built template
 DAYTONA_API_KEY=              # only if using the Daytona provider
 
 # Device relay
-INTERNAL_API_SECRET=          # Trigger tasks → server /internal/* calls
 DEVICE_TOKEN_PEPPER=          # hashing device tokens
 
 # MCP
@@ -918,7 +922,7 @@ ROUTER_MODEL=                 # small/fast model id
 SENTRY_DSN=
 ```
 
-Accounts needed: Neon (DB + AI Gateway), E2B (Pro plan for real use; Hobby is enough for Phase 0), Trigger.dev, a host for the backend (Railway/Fly), a GitHub OAuth App, a Google Cloud project with an External OAuth consent screen (you and teammates added as test users), Sentry (optional), Apple Developer ID for signing and notarizing macOS builds (needed for distribution, and so macOS keeps the Accessibility/Screen Recording permissions that local mode depends on across updates). The backend host must support long-lived WebSockets (Railway and Fly both do).
+Accounts needed: Neon (DB + AI Gateway), E2B (Pro plan for real use; Hobby is enough for Phase 0), a host for the backend (Railway/Fly), a GitHub OAuth App, a Google Cloud project with an External OAuth consent screen (you and teammates added as test users), Sentry (optional), Apple Developer ID for signing and notarizing macOS builds (needed for distribution, and so macOS keeps the Accessibility/Screen Recording permissions that local mode depends on across updates). The backend host must support long-lived WebSockets (Railway and Fly both do).
 
 ---
 

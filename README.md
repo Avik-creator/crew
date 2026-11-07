@@ -2,7 +2,7 @@
 
 # Crew
 
-Crew is a Mac app for AI teammates. Each bot has a job, a chat, and its own screen. One person shares one cloud computer across their bots, so they share files and browser logins and do not fight over the mouse. A bot can instead use this Mac. Connected apps come in through MCP. Turns run in the background, so closing the laptop does not stop the work.
+Crew is a Mac app for AI teammates. Each bot has a job, a chat, and its own screen. One person shares one cloud computer across their bots, so they share files and browser logins and do not fight over the mouse. A bot can instead use this Mac. Connected apps come in through MCP. Turns run on the server, so closing the app does not stop the work.
 
 ![A chat with Crew, the main assistant. You ask it to have Evan look up the weather in Bhutan. Crew messages Evan, the chat shows "Evan replied", and Crew sums up the answer with its source.](docs/crew-chat.jpg)
 
@@ -24,10 +24,10 @@ Sign-up can be limited to an email allowlist. There is no billing and no web cli
 ## How a message moves
 
 1. The Electron app posts the message to the Hono API.
-2. The API writes it and enqueues a Trigger.dev run, one at a time per bot.
-3. The `bot-turn` task builds the prompt, opens the computer tools and the connector tools, and calls the model through the Neon AI Gateway.
+2. The API writes it, queues a run in Postgres, and starts it in the same process. A per-bot lock means each bot does one thing at a time.
+3. The turn builds the prompt, opens the computer tools and the connector tools, and calls the model through the Neon AI Gateway.
 4. Tool calls run against the cloud screen or, for a Mac bot, over a WebSocket the Mac opened outbound. The Mac is never a server on the internet.
-5. The reply streams back on a Trigger realtime stream. Smaller facts, such as "the run finished", come over server-sent events.
+5. The reply streams back to the app over server-sent events, chunk by chunk, and resumes where it left off after a dropped connection. Smaller facts, such as "the run finished", come over a second event stream.
 6. You can open the bot's screen beside the chat. The app receives a short-lived ticket. It never holds the computer's own credentials.
 
 ## Layout
@@ -35,9 +35,8 @@ Sign-up can be limited to an email allowlist. There is no billing and no web cli
 | Path | What it is |
 |---|---|
 | `apps/desktop` | Electron app: the UI, and the device agent that lets a bot use your Mac |
-| `apps/server` | Hono API: auth, REST, live events, the screen proxy, the device relay, OAuth callbacks, and the Google MCP server |
-| `apps/tasks` | Trigger.dev tasks: `bot-turn`, schedules, and computer maintenance |
-| `packages/agent` | The turn: prompt, tools, approvals, and the group router |
+| `apps/server` | Hono API: auth, REST, live events, the turn runner, schedules, the screen proxy, the device relay, OAuth callbacks, and the Google MCP server |
+| `packages/agent` | The turn and the runner: prompt, tools, approvals, the group router, and schedules |
 | `packages/computer` | Cloud computers behind one provider interface. E2B is the default. Daytona implements the same interface |
 | `packages/mcp` | Connector catalog, OAuth, transports, and the approval policy |
 | `packages/db` | Drizzle schema and the Neon Postgres client |
@@ -47,7 +46,6 @@ Sign-up can be limited to an email allowlist. There is no billing and no web cli
 
 - Node 22 or newer, and pnpm 10
 - A Neon Postgres database with the AI Gateway enabled
-- A Trigger.dev project (v4)
 - An E2B API key, if bots should have a cloud screen
 
 ## Run it locally
@@ -58,19 +56,18 @@ cp .env.example .env
 pnpm db:push
 ```
 
-`.env.example` names every setting. The ones a local run needs are the database URLs, the AI Gateway URL and token, `TRIGGER_SECRET_KEY`, `TRIGGER_PROJECT_REF`, `E2B_API_KEY`, and the four random secrets (`BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, `INTERNAL_API_SECRET`, `DEVICE_TOKEN_PEPPER`). `openssl rand -hex 32` is enough for those. Leave `E2B_TEMPLATE_ID` empty to use E2B's stock desktop. `pnpm template:build` builds a faster image named `crew-computer` when you want one.
+`.env.example` names every setting. The ones a local run needs are the database URLs, the AI Gateway URL and token, `E2B_API_KEY`, and the three random secrets (`BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, `DEVICE_TOKEN_PEPPER`). `openssl rand -hex 32` is enough for those. Leave `E2B_TEMPLATE_ID` empty to use E2B's stock desktop. `pnpm template:build` builds a faster image named `crew-computer` when you want one.
 
 `ALLOWED_EMAILS` restricts sign-up. Empty means anyone who can reach the API can create an account.
 
-Then three terminals:
+Then two terminals:
 
 ```bash
-pnpm dev:server     # API on http://localhost:8787
-pnpm dev:tasks      # Trigger.dev dev worker, from apps/tasks, using the root .env
+pnpm dev:server     # API on http://localhost:8787, and where bot turns run
 pnpm dev:desktop    # the app
 ```
 
-Sign up, create a bot, and send it a message. The dev worker must stay running for turns, schedules, and the ten-minute computer maintenance cron. A cron only fires while that worker is connected.
+Sign up, create a bot, and send it a message. The server must stay running for turns, schedules, and the ten-minute computer check. A schedule that comes due while the server is down runs once when it is back. If the server stops in the middle of a turn, that turn is not replayed, because it may already have sent something. The bot leaves a note in the chat instead.
 
 The default model is `gpt-5-4-nano`, through the Neon AI Gateway. `ROUTER_MODEL` defaults to `claude-haiku-5-5` and is only used to pick who answers in a group. Set either in `.env`. A bot can also pin its own model.
 
@@ -87,7 +84,7 @@ pnpm typecheck
 pnpm --filter @crew/computer smoke
 ```
 
-The computer smoke test talks to a live E2B sandbox. The device-relay smoke test is `pnpm --filter @crew/server exec tsx scripts/relay-smoke.ts` and needs a session, a running server, and `INTERNAL_API_SECRET`.
+The computer smoke test talks to a live E2B sandbox.
 
 ## macOS build
 
