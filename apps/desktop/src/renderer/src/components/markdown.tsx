@@ -4,11 +4,14 @@ import { defaultComponents, Streamdown } from "streamdown"
 import { linkMentions, MENTION_HREF } from "@/lib/mentions"
 import { useBots } from "@/lib/queries"
 
+import { renderLinkSafetyModal } from "./link-safety-dialog"
 import { MentionChip } from "./mention-chip"
 
 // New words fade in as they arrive. Streamdown paces them, so a burst of text
 // reads as a steady flow instead of a jump.
 const FADE_IN = { animation: "fadeIn", duration: 180, sep: "word", maxBacklogMs: 400 } as const
+
+const LINK_SAFETY = { enabled: true, renderModal: renderLinkSafetyModal }
 
 // Message markdown, with "@Name" drawn as a chip for every bot on the team
 export const Markdown = memo(function Markdown({ text, streaming }: { text: string; streaming?: boolean }) {
@@ -34,6 +37,8 @@ export const Markdown = memo(function Markdown({ text, streaming }: { text: stri
   )
   return (
     <Streamdown
+      className="sd-theme"
+      linkSafety={LINK_SAFETY}
       isAnimating={streaming}
       mode={streaming ? "streaming" : "static"}
       animated={streaming ? FADE_IN : false}
