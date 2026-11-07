@@ -36,7 +36,7 @@ export function buildSystemPrompt(p: PromptInput) {
           `${userName} can watch your screen live and may take over at any time.`,
           "On a web page, use readPage for its exact text and link URLs, and pageControls then usePage to click, fill and navigate. Never copy text or URLs off a screenshot.",
           p.appControl
-            ? "In other apps (the terminal, the text editor, files), use readApp to see their controls and text, then useApp with refs from that read. Use screenshots and useScreen only for what readApp can't see, like canvases, images or games, or to check how something looks."
+            ? "In other apps (the terminal, the text editor, files), use readApp to see their controls and text, then useApp with refs from that read. The browser's own tabs, buttons and pop-ups, like a permission prompt or a dialog over the page, are there too: readApp with \"browser\". Use screenshots and useScreen only for what readApp can't see, like canvases, images or games, or to check how something looks."
             : "Use screenshots to check how something looks, or for apps that aren't web pages.",
         ]
       : [

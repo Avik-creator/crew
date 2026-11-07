@@ -21,6 +21,8 @@ TEXTY = {"text", "entry", "password text", "terminal", "spin button", "editbar",
 # Layout that only adds depth; their children still show
 SKIP = {"filler", "panel", "scroll pane", "viewport", "layered pane", "split pane", "unknown", "redundant object", "section", "grouping"}
 NEVER_REF = {"frame", "window", "dialog", "alert", "menu bar", "tool bar", "status bar", "separator", "scroll bar", "page tab list", "tree table", "table", "list", "tree", "label", "heading", "static", "icon"}
+# What models call the browser; its app name differs between Chrome and Chromium
+BROWSER = {"browser", "chrome", "google chrome", "google-chrome", "chromium", "chromium-browser", "web browser"}
 CONTEXT = {"frame", "window", "dialog", "alert", "label", "heading", "static", "status bar", "page tab list", "tool bar", "menu bar", "list", "table", "tree table", "tree"}
 
 class Fail(Exception): pass
@@ -72,6 +74,8 @@ def find_app(name):
     apps = [a for a in desktop_apps() if (safe(a.get_name, "") or "") not in BACKGROUND]
     want = name.strip().lower()
     hits = [a for a in apps if (safe(a.get_name, "") or "").lower() == want]
+    if not hits and want in BROWSER:
+        hits = [a for a in apps if any(k in (safe(a.get_name, "") or "").lower() for k in ("chrome", "chromium"))]
     showing = [a for a in hits if windows(a)]
     if showing or hits: return (showing or hits)[-1]
     names = sorted({safe(a.get_name, "") for a in apps if windows(a)} - {""})
@@ -104,7 +108,7 @@ def read(n, opts):
         if not starts: raise Fail(f"{safe(app.get_name, app_name)} is running but shows no window.")
     sid = "".join(random.choices(string.ascii_lowercase + string.digits, k=5))
     refs, lines = {}, []
-    state = {"nodes": 0, "truncated": False}
+    state = {"nodes": 0, "truncated": False, "popups": set()}
 
     def walk(o, path, depth, indent):
         state["nodes"] += 1
@@ -127,6 +131,16 @@ def read(n, opts):
             bool([a for a in acts if a]) or texty or (st and (st.contains(S.FOCUSABLE) or st.contains(S.SELECTABLE)))
         )
         b = box(o)
+        if role in ("alert", "dialog"):
+            # Chrome lists a prompt inside its window and again as a window of its own
+            key = (role, name, b)
+            if key in state["popups"]: return
+            state["popups"].add(key)
+        if role == "document web" and depth > 0:
+            # A web page: the browser tools read it exactly, by its DOM. Chrome's
+            # hidden helper windows hold unnamed ones.
+            if name: lines.append("  " * indent + f'document web "{name}" (the page itself: use readPage, pageControls and usePage)')
+            return
         kids = safe(o.get_child_count, 0) or 0
         if interactive and not name and not texty and (kids or not b):
             interactive = False  # an unnamed row or wrapper: its children carry the names
@@ -143,6 +157,9 @@ def read(n, opts):
                 if value and value.strip():
                     if "\n" in value.strip(): line += "\n" + "\n".join("  " * (indent + 1) + "| " + l for l in value.rstrip().split("\n")[-40:])
                     else: line += f' = "{value.strip()[:300]}"'
+                elif role == "terminal":
+                    # Newer VTE (0.76 and up) shares no text with screen readers
+                    line += " (its text can't be read here: run commands with bash, or look with a screenshot)"
             lines.append("  " * indent + line)
             shown = True
         elif name and role in CONTEXT:

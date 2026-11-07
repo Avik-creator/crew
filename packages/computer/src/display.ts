@@ -25,8 +25,9 @@ const APP_ALIASES: Record<string, string> = {
   calculator: "galculator",
 }
 const program = (name: string) => APP_ALIASES[name.trim().toLowerCase()] ?? name.trim()
-// The browser isn't here: openUrl starts it with the bot's profile and logins
-const KNOWN_APPS = "xfce4-terminal (terminal), mousepad (text editor), thunar (files), galculator (calculator). For the browser, use openUrl"
+// The browser always starts through browser.py, with the bot's profile and logins
+const BROWSER_NAMES = new Set(["browser", "web browser", "chrome", "google chrome", "google-chrome", "chromium", "chromium-browser"])
+const KNOWN_APPS = "xfce4-terminal (terminal), mousepad (text editor), thunar (files), galculator (calculator), browser"
 
 // The display's session bus, which its apps found the same way: the
 // accessibility tree is reached through it
@@ -199,6 +200,11 @@ export class CloudDisplayDriver implements ComputerDriver {
   // Starts an app by its program name or a common name for it, and says so
   // plainly when there's no such program
   async openApp(name: string) {
+    if (BROWSER_NAMES.has(name.trim().toLowerCase())) {
+      const r = await this.computer.exec(`python3 ${CREW_DIR}/browser.py launch ${this.display} ''`, { timeoutMs: 60_000 })
+      if (r.exitCode !== 0) throw new Error(r.stderr || "Could not open the browser")
+      return 'The browser is open. Go to a page with openUrl. readApp with "browser" shows its own buttons, tabs and pop-ups.'
+    }
     const bin = program(name)
     const r = await this.computer.exec(
       `command -v ${q(bin)} >/dev/null || exit 3; ${this.env} nohup ${q(bin)} >/dev/null 2>&1 & sleep 1.5`,

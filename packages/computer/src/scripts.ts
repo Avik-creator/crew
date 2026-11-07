@@ -1,7 +1,7 @@
 // Files and toolchains the computer needs. Our E2B template bakes them in;
 // on a stock desktop image they're installed on first use, so either works.
 
-export const SCRIPTS_VERSION = "13"
+export const SCRIPTS_VERSION = "16"
 export const HOME = "/home/user"
 export const CREW_DIR = `${HOME}/.crew`
 export const WORKSPACE = `${HOME}/workspace`
@@ -40,10 +40,14 @@ def launch(n, url):
         profile = os.path.join(HOME, ".profiles", f"bot-{n}")
         os.makedirs(profile, exist_ok=True)
         chrome = next((c for c in ["google-chrome", "chromium", "chromium-browser"] if subprocess.call(["which", c], stdout=subprocess.DEVNULL) == 0), "google-chrome")
+        # Accessibility on (the variable joins the tree, the flag fills it), so
+        # apps.py can read Chrome's own buttons, tabs and prompts. Chrome can't
+        # update itself here, so it isn't asked to.
         subprocess.Popen([chrome, f"--user-data-dir={profile}", f"--remote-debugging-port={cdp_port(n)}",
                           "--no-first-run", "--no-default-browser-check", "--disable-dev-shm-usage",
+                          "--force-renderer-accessibility", "--simulate-outdated-no-au=Tue, 31 Dec 2099 23:59:59 GMT",
                           "--start-maximized", url or "about:blank"],
-                         env={**os.environ, "DISPLAY": f":{n}"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         env={**os.environ, "DISPLAY": f":{n}", "ACCESSIBILITY_ENABLED": "1"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          start_new_session=True)
         for _ in range(50):
             if running(n): break
