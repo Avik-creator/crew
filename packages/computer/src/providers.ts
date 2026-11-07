@@ -1,4 +1,5 @@
 import { DaytonaProvider } from "./daytona"
+import { DockerProvider } from "./docker"
 import { E2BProvider } from "./e2b"
 import type { ComputerProvider } from "./provider"
 
@@ -7,6 +8,7 @@ type ProviderName = ComputerProvider["name"]
 const registry: Record<ProviderName, () => ComputerProvider> = {
   e2b: () => new E2BProvider(),
   daytona: () => new DaytonaProvider(),
+  docker: () => new DockerProvider(),
 }
 const instances = new Map<ProviderName, ComputerProvider>()
 

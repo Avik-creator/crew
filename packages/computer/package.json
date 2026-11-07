@@ -8,6 +8,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "template:build": "tsx --env-file=../../.env template/build.ts",
+    "docker:build": "tsx docker/build.ts",
     "smoke": "tsx --env-file=../../.env scripts/smoke.ts"
   },
   "dependencies": {

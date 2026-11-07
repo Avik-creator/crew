@@ -1,5 +1,6 @@
-// One interface over the sandbox vendor, so the shared computer can run on E2B
-// (primary) or Daytona without anything above this layer changing.
+// One interface over where the computer runs, so the shared computer can be on
+// E2B (primary), Daytona or a local Docker container without anything above
+// this layer changing.
 
 export type ExecOptions = {
   timeoutMs?: number
@@ -32,7 +33,7 @@ export interface ComputerHandle {
 export type CreatedComputer = { sandboxId: string; templateId: string }
 
 export interface ComputerProvider {
-  readonly name: "e2b" | "daytona"
+  readonly name: "e2b" | "daytona" | "docker"
   create(opts: { userId: string; resolution: [number, number]; idleMs: number }): Promise<CreatedComputer>
   // Resumes a paused computer if needed
   connect(sandboxId: string, idleMs: number): Promise<ComputerHandle>

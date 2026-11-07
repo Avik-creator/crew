@@ -39,7 +39,8 @@ export async function getWorkstation(userId: string): Promise<Workstation> {
   const ws = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`computer:${userId}`}))`)
     let [row] = await tx.select().from(computers).where(eq(computers.userId, userId))
-    const provider = getProvider(row?.provider)
+    // A computer that exists stays where it is; a new one goes to COMPUTER_PROVIDER
+    const provider = getProvider(row?.sandboxId ? row.provider : null)
     const now = new Date()
 
     const create = async () => {

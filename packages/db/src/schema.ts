@@ -108,7 +108,7 @@ export const computers = pgTable("computers", {
     .notNull()
     .unique()
     .references(() => user.id, { onDelete: "cascade" }),
-  provider: text("provider").$type<"e2b" | "daytona">().notNull(),
+  provider: text("provider").$type<"e2b" | "daytona" | "docker">().notNull(),
   sandboxId: text("sandbox_id"),
   templateId: text("template_id"),
   status: text("status")

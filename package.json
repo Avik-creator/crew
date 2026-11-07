@@ -10,6 +10,7 @@
     "db:push": "pnpm --filter @crew/db push",
     "db:studio": "pnpm --filter @crew/db studio",
     "template:build": "pnpm --filter @crew/computer template:build",
+    "computer:docker": "pnpm --filter @crew/computer docker:build",
     "typecheck": "pnpm -r --parallel typecheck",
     "build": "pnpm -r build"
   },
