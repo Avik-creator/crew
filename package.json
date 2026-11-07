@@ -6,7 +6,6 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "dev:server": "pnpm --filter @crew/server dev",
-    "dev:tasks": "pnpm --filter @crew/tasks dev",
     "dev:desktop": "pnpm --filter @crew/desktop dev",
     "db:push": "pnpm --filter @crew/db push",
     "db:studio": "pnpm --filter @crew/db studio",

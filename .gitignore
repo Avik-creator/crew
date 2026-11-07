@@ -3,7 +3,6 @@ dist
 out
 .env
 .env.local
-.trigger
 *.log
 .DS_Store
 apps/desktop/release
