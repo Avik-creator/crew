@@ -13,9 +13,11 @@ export function subscribe(userId: string, fn: Listener) {
   let set = listeners.get(userId)
   if (!set) listeners.set(userId, (set = new Set()))
   set.add(fn)
+  // Safe to call twice: a stream that ended late must not drop the set a
+  // newer connection of the same person made after this one emptied the old
   return () => {
     set.delete(fn)
-    if (!set.size) listeners.delete(userId)
+    if (!set.size && listeners.get(userId) === set) listeners.delete(userId)
   }
 }
 
