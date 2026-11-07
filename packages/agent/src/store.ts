@@ -47,6 +47,35 @@ export async function saveMessage(input: NewMessage): Promise<Message> {
   return row!
 }
 
+// Tool calls a turn started but never finished: still running, or approved
+// and waiting to run
+const UNFINISHED = new Set(["input-streaming", "input-available", "approval-responded"])
+
+// A turn that ended early leaves its tool calls without results. They're marked
+// failed with the reason, so the chat stops showing them as running and the
+// model isn't sent a call with no answer. Only this chain's messages change: an
+// approved call of another chain may still be waiting for its turn.
+export async function settleToolCalls(threadId: string, botId: string, chainId: string | null, reason: string) {
+  if (!chainId) return []
+  const rows = await db
+    .select({ id: messages.id, parts: messages.parts })
+    .from(messages)
+    .where(and(eq(messages.threadId, threadId), eq(messages.authorId, botId), eq(messages.chainId, chainId), eq(messages.role, "assistant")))
+  const changed: string[] = []
+  for (const row of rows) {
+    const parts = row.parts as { type: string; state?: string; approval?: { approved?: boolean } }[]
+    const open = (p: (typeof parts)[number]) =>
+      (p.type.startsWith("tool-") || p.type === "dynamic-tool") && UNFINISHED.has(p.state ?? "") && p.approval?.approved !== false
+    if (!parts.some(open)) continue
+    await db
+      .update(messages)
+      .set({ parts: parts.map((p) => (open(p) ? { ...p, state: "output-error", errorText: reason } : p)) })
+      .where(eq(messages.id, row.id))
+    changed.push(row.id)
+  }
+  return changed
+}
+
 // The private thread two bots use to message each other, created on first use
 export async function botPairThread(userId: string, a: string, b: string) {
   const [existing] = await db

@@ -38,6 +38,9 @@ importers:
       electron-updater:
         specifier: 6.8.11
         version: 6.8.11
+      node-machine-id:
+        specifier: 1.1.12
+        version: 1.1.12
       ws:
         specifier: ^8.22.1
         version: 8.22.1
@@ -4885,6 +4888,9 @@ packages:
 
   node-int64@0.4.0:
     resolution: {integrity: sha512-O5lz91xSOeoXP6DulyHfllpq+Eg00MWitZIbtPfoSEvqIHdl5gfcY6hYzDWnj0qD5tz52PI08u9qUvSVeUBeHw==}
+
+  node-machine-id@1.1.12:
+    resolution: {integrity: sha512-QNABxbrPa3qEIfrE6GOJ7BYIuignnJw7iQ2YPbc3Nla1HzRJjXzZOiikfF8m7eAMfichLt3M4VgLOetqgDmgGQ==}
 
   node-releases@2.0.63:
     resolution: {integrity: sha512-6li2QanLsAXpIH2R6j77MzRyvOyrvdTqlKtO4CgBdHGNvN99ZZfyxszHc5o5+IZBWD5u6Hzwg83JoGXmqZNG9Q==}
@@ -10864,6 +10870,8 @@ snapshots:
       which: 6.0.1
 
   node-int64@0.4.0: {}
+
+  node-machine-id@1.1.12: {}
 
   node-releases@2.0.63: {}
 

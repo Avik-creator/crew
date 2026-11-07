@@ -8,7 +8,7 @@ import { convertToModelMessages, experimental_createSteering, type Experimental_
 
 import type { EventSink, TurnDispatcher } from "./context"
 import { liveReplies } from "./live"
-import { saveMessage } from "./store"
+import { saveMessage, settleToolCalls } from "./store"
 import { runTurn } from "./turn"
 
 // A running turn renews its claim every few seconds. A claim that lapses means
@@ -250,6 +250,11 @@ export class TurnRunner implements TurnDispatcher {
   private async interrupted(run: Run) {
     liveReplies.end(run.id)
     if (!run.threadId) return
+    // Its unfinished tool calls stop showing as running
+    const settled = await settleToolCalls(run.threadId, run.botId, run.chainId, "Stopped because Crew's server restarted.").catch(() => [] as string[])
+    for (const messageId of settled) {
+      await this.events.emit(run.userId, { type: "message.created", threadId: run.threadId, messageId, botId: run.botId }).catch(() => {})
+    }
     const [bot] = await db.select({ name: bots.name }).from(bots).where(eq(bots.id, run.botId))
     const note = await saveMessage({
       threadId: run.threadId,

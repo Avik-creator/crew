@@ -98,7 +98,11 @@ export class DeviceAgent {
     const url = `${serverUrl().replace(/^http/, "ws")}/devices/connect`
     const ws = new WebSocket(url, { headers: { authorization: `Bearer ${device.token}` } })
     this.ws = ws
+    // A restart opens a new socket before the old one finishes closing; the
+    // old one's events must not touch the new connection
+    const current = () => this.ws === ws
     ws.on("open", () => {
+      if (!current()) return ws.close()
       this.retry = 0
       this.setStatus({ online: true, error: undefined })
       this.send({
@@ -113,12 +117,13 @@ export class DeviceAgent {
     })
     ws.on("message", (raw) => void this.onFrame(String(raw)))
     ws.on("unexpected-response", (_req, res) => {
-      if (res.statusCode === 401) {
+      if (current() && res.statusCode === 401) {
         this.setStatus({ error: "This Mac was unlinked. Link it again in Settings." })
         this.stopped = true
       }
     })
     ws.on("close", () => {
+      if (!current()) return
       clearInterval(this.ping)
       this.mcp.closeAll()
       this.setStatus({ online: false })
@@ -133,8 +138,11 @@ export class DeviceAgent {
   stop() {
     this.stopped = true
     clearTimeout(this.timer)
+    clearInterval(this.ping)
     this.ws?.close()
+    this.ws = undefined
     this.mcp.closeAll()
+    this.setStatus({ online: false })
   }
 
   restart() {

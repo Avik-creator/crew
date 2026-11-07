@@ -135,6 +135,9 @@ export const devices = pgTable(
     platform: text("platform").notNull(),
     appVersion: text("app_version"),
     tokenHash: text("token_hash").notNull().unique(),
+    // A hash of the computer's hardware id, so linking it again after a
+    // reinstall finds its old record
+    machineId: text("machine_id"),
     status: text("status").$type<"online" | "offline">().notNull().default("offline"),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     capabilities: jsonb("capabilities")
@@ -144,7 +147,7 @@ export const devices = pgTable(
     allowedPaths: text("allowed_paths").array().notNull().default(sql`'{}'::text[]`),
     createdAt: createdAt(),
   },
-  (t) => [index("devices_user_idx").on(t.userId)],
+  (t) => [index("devices_user_idx").on(t.userId), index("devices_user_machine_idx").on(t.userId, t.machineId)],
 )
 
 export const bots = pgTable(

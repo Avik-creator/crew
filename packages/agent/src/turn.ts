@@ -36,7 +36,7 @@ import type { EventSink, TurnContext, TurnDispatcher } from "./context"
 import { loadHistory, stripImages } from "./history"
 import { languageModel, SCREEN_MODEL } from "./model"
 import { buildSystemPrompt } from "./prompt"
-import { saveMessage } from "./store"
+import { saveMessage, settleToolCalls } from "./store"
 import { collabTools } from "./tools/collab"
 import { appTools } from "./tools/apps"
 import { browserTools } from "./tools/browser"
@@ -55,6 +55,8 @@ export type TurnDeps = {
 }
 
 export type TurnResult = { status: "completed" | "waiting" | "skipped" | "failed" | "cancelled"; runId?: string; reason?: string }
+
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 // Reasons that come from the person and so ignore the daily wake budget
 const PERSON_REASONS = new Set(["chat", "approval", "takeover", "group"])
@@ -215,6 +217,13 @@ export async function runTurn(run: Run, deps: TurnDeps): Promise<TurnResult> {
     events: deps.events,
   }
   const emit = (e: Parameters<EventSink["emit"]>[1]) => deps.events.emit(ctx.userId, e).catch(() => {})
+  // A turn that ends early marks its unfinished tool calls failed, so they
+  // don't spin in the chat or break the next turn's history
+  const settle = async (reason: string) => {
+    for (const messageId of await settleToolCalls(thread.id, bot.id, payload.chainId ?? null, reason)) {
+      await emit({ type: "message.created", threadId: thread.id, messageId, botId: bot.id })
+    }
+  }
   await emit({ type: "run.started", threadId: thread.id, runId, botId: bot.id })
 
   // Closed at the end even if something else in setup fails first
@@ -283,6 +292,9 @@ export async function runTurn(run: Run, deps: TurnDeps): Promise<TurnResult> {
     // A bot on the default model hands the screen to one that can aim, from
     // its first screenshot on. A model the person picked is kept throughout.
     const screenModel = bot.model ? undefined : languageModel(SCREEN_MODEL())
+    // A provider error ends the stream without throwing; it's kept here so the
+    // turn fails with the reason instead of finishing silently
+    let failure: unknown
     const result = streamText({
       model: languageModel(bot.model),
       system,
@@ -296,12 +308,17 @@ export async function runTurn(run: Run, deps: TurnDeps): Promise<TurnResult> {
       }),
       abortSignal: deps.signal,
       experimental_steering: deps.steering,
+      onError: ({ error }) => {
+        failure ??= error
+      },
     })
 
     let saved: Promise<UIMessage> | undefined
     const stream = result.toUIMessageStream({
       originalMessages: history,
       generateMessageId: generateId,
+      // The real reason, not "An error occurred.", for failed tools and the stream
+      onError: errorText,
       messageMetadata: ({ part }) => (part.type === "start" ? metadata : undefined),
       onFinish: ({ responseMessage }) => {
         saved = (async () => {
@@ -330,9 +347,12 @@ export async function runTurn(run: Run, deps: TurnDeps): Promise<TurnResult> {
     const usage = await Promise.resolve(result.totalUsage).catch(() => undefined)
     const steps = (await Promise.resolve(result.steps).catch(() => [])).length
 
+    if (failure && !deps.signal?.aborted) throw failure
+
     // Stopped by the person: the stream ends quietly and what was written so
     // far is saved, but nothing else follows from it
     if (deps.signal?.aborted) {
+      await settle("Stopped.")
       await db
         .update(runs)
         .set({ status: "cancelled", usage: { inputTokens: usage?.inputTokens, outputTokens: usage?.outputTokens, steps }, completedAt: new Date() })
@@ -398,8 +418,9 @@ export async function runTurn(run: Run, deps: TurnDeps): Promise<TurnResult> {
     }
     return { status, runId }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = errorText(err)
     const cancelled = deps.signal?.aborted ?? false
+    await settle(cancelled ? "Stopped." : `Stopped: ${message}`).catch(() => {})
     await db
       .update(runs)
       .set({ status: cancelled ? "cancelled" : "failed", error: message, completedAt: new Date() })

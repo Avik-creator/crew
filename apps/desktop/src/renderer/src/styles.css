@@ -238,6 +238,10 @@ textarea:focus-visible,
 .bubble-mine code:not(pre code) {
   background: color-mix(in srgb, var(--bubble-fg) 14%, transparent);
 }
+/* Your own line breaks stay as typed; markdown would join them into one line */
+.bubble-mine p {
+  white-space: pre-wrap;
+}
 
 /* Bot faces: eyes ease toward the pointer and blink now and then */
 .face-eyes {

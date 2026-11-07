@@ -69,5 +69,20 @@ export async function loadHistory(threadId: string, botId: string, limit: number
   }
   // A history can't start with a dangling assistant turn on some providers
   while (out[0]?.role === "assistant") out.shift()
-  return out
+  return out.map((m, i) => (i === out.length - 1 ? m : closeApprovedCalls(m)))
+}
+
+// An approved call runs when the turn resumes from the message holding it. In
+// any earlier message it never ran (the turn stopped first), and the model
+// rejects a call with no result, so it's shown as failed instead.
+function closeApprovedCalls(m: UIMessage): UIMessage {
+  const stale = (p: AnyPart) =>
+    toolNameOf(p) !== null && p.state === "approval-responded" && (p.approval as { approved?: boolean } | undefined)?.approved !== false
+  if (!(m.parts as AnyPart[]).some(stale)) return m
+  return {
+    ...m,
+    parts: (m.parts as AnyPart[]).map((p) =>
+      stale(p) ? { ...p, state: "output-error", errorText: "This was stopped before it ran." } : p,
+    ) as UIMessage["parts"],
+  }
 }

@@ -1,9 +1,24 @@
+import { createHash } from "node:crypto"
+
 import { app, dialog, ipcMain, Notification, shell, systemPreferences, type BrowserWindow } from "electron"
+// CommonJS package: its functions come off the default export in ESM
+import nodeMachineId from "node-machine-id"
 
 import type { DeviceAgent } from "./device/agent"
 import { DEFAULT_SERVER_URL, secureStore, serverUrl } from "./store"
 
 type Deps = { getWindow: () => BrowserWindow | null; agent: DeviceAgent; updater: { check(): void; install(): void } }
+
+// This computer's hardware id, hashed with a Crew prefix so it can't be matched
+// with what other apps send. Lets the server find a Mac's old record after a
+// reinstall wiped what the app remembered.
+function machineId() {
+  try {
+    return createHash("sha256").update(`crew:${nodeMachineId.machineIdSync(true)}`).digest("hex")
+  } catch {
+    return undefined
+  }
+}
 
 const PRIVACY_PANES = {
   screen: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
@@ -58,22 +73,27 @@ export function registerIpc({ getWindow, agent, updater }: Deps) {
     await agent.refreshApps()
     return { ...agent.status, allowedPaths: store.get("allowedPaths") ?? [], capabilities: agent.capabilities() }
   })
-  // Links this Mac to the signed-in account: the server returns a device token once
+  // Links this Mac to the signed-in account: the server returns a device token
+  // once. A Mac linked before gets its old record back with a new token.
   ipcMain.handle("crew:device:link", async (_e, name: string) => {
     const token = store.get("sessionToken")
     if (!token) throw new Error("Sign in first")
+    const previous = store.get("device")?.id ?? store.get("unlinkedDeviceId")
     const res = await fetch(`${serverUrl()}/devices`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify({ name, platform: process.platform }),
+      body: JSON.stringify({ name, platform: process.platform, machineId: machineId(), ...(previous ? { deviceId: previous } : {}) }),
     })
     if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Couldn't link this Mac")
     const { device, token: deviceToken } = (await res.json()) as { device: { id: string; name: string }; token: string }
     store.set("device", { id: device.id, name: device.name, token: deviceToken })
+    store.set("unlinkedDeviceId", undefined)
     agent.restart()
     return device
   })
   ipcMain.handle("crew:device:unlink", () => {
+    const device = store.get("device")
+    if (device) store.set("unlinkedDeviceId", device.id)
     store.set("device", undefined)
     agent.stop()
     agent.start()

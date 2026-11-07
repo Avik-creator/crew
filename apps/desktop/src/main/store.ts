@@ -7,6 +7,9 @@ export type StoreData = {
   serverUrl?: string
   sessionToken?: string
   device?: { id: string; token: string; name: string }
+  // The record this Mac had before it was unlinked, so linking again keeps it
+  // and the bots that work on it
+  unlinkedDeviceId?: string
   allowedPaths?: string[]
   // Environment values for local-command connectors, by server id
   mcpEnv?: Record<string, Record<string, string>>
