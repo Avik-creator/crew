@@ -1,5 +1,6 @@
-import { Check, Plus, RefreshCw, Settings2, TriangleAlert, Unplug } from "lucide-react"
-import { useEffect, useState } from "react"
+import { Check, Compass, Plus, RefreshCw, Search, Settings2, TriangleAlert, Unplug } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import { useDeferredValue, useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { ConnectorIcon } from "@/components/connector-icon"
@@ -9,7 +10,7 @@ import { Field, Input } from "@/components/ui/input"
 import { Badge, PageHeader, Section, Switch } from "@/components/ui/misc"
 import { Select } from "@/components/ui/select"
 import { api } from "@/lib/api"
-import { keys, useAction, useConnectors, useConnectorTools, useDevices } from "@/lib/queries"
+import { keys, queryClient, useAction, useConnectors, useConnectorTools, useDevices } from "@/lib/queries"
 import type { Connector, ConnectorTemplate } from "@/lib/types"
 import { cn, errorMessage } from "@/lib/utils"
 
@@ -305,11 +306,92 @@ function AddServerDialog({ open, onOpenChange, templates }: { open: boolean; onO
   )
 }
 
+type RegistryItem = { id: string; name: string; description: string; domain: string; url: string; auth: "oauth" | "token" | "none" | "unknown"; categories: string[] }
+
+const AUTH_LABEL: Record<RegistryItem["auth"], string> = { oauth: "Sign in", token: "API key", none: "No sign-in", unknown: "" }
+
+// Search integrations.sh's ~1,350 remote MCP servers and add one in a click
+function BrowseDialog({ open, onOpenChange, onSecrets }: { open: boolean; onOpenChange: (v: boolean) => void; onSecrets: (c: Connector) => void }) {
+  const [q, setQ] = useState("")
+  const query = useDeferredValue(q.trim())
+  const results = useQuery({
+    queryKey: ["registry", query],
+    queryFn: () => api<RegistryItem[]>(`/connectors/browse?q=${encodeURIComponent(query)}`),
+    enabled: open,
+    staleTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
+  })
+  const [busy, setBusy] = useState<string | null>(null)
+  useEffect(() => void (open && setQ("")), [open])
+
+  const add = async (item: RegistryItem) => {
+    setBusy(item.id)
+    try {
+      const server = await api<Connector>("/connectors/browse", { body: { id: item.id } })
+      await queryClient.invalidateQueries({ queryKey: keys.connectors })
+      if (server.authMode === "token") {
+        onOpenChange(false)
+        onSecrets(server)
+        return
+      }
+      const res = await api<{ authorizeUrl?: string; connected?: true }>(`/connectors/${server.id}/connect`, { method: "POST" })
+      await queryClient.invalidateQueries({ queryKey: keys.connectors })
+      if (res.authorizeUrl) {
+        await window.crew.openExternal(res.authorizeUrl)
+        toast("Finish signing in in your browser", { description: `Crew will update when ${server.name} is connected.` })
+      } else toast.success(`${server.name} connected`)
+      onOpenChange(false)
+    } catch (err) {
+      await queryClient.invalidateQueries({ queryKey: keys.connectors })
+      toast.error(errorMessage(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        title="Browse integrations"
+        description="Remote MCP servers listed on integrations.sh. Adding one makes it available to the bots you give it to."
+        className="w-[min(680px,calc(100vw-32px))]"
+      >
+        <div className="relative mb-3">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-faint" />
+          <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search Slack, HubSpot, Stripe, Figma..." className="pl-9" />
+        </div>
+        <div className="max-h-[52vh] divide-y divide-line overflow-y-auto">
+          {(results.data ?? []).map((item) => (
+            <div key={item.id} className="flex items-start gap-3 py-2.5">
+              <ConnectorIcon icon={`tile:${item.name}`} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-[13px] font-medium">{item.name}</p>
+                  {AUTH_LABEL[item.auth] ? <Badge>{AUTH_LABEL[item.auth]}</Badge> : null}
+                </div>
+                <p className="line-clamp-2 text-[12px] text-muted">{item.description || item.domain}</p>
+                <p className="mt-0.5 truncate text-[11px] text-faint">{item.url}</p>
+              </div>
+              <Button size="sm" variant="primary" loading={busy === item.id} disabled={!!busy && busy !== item.id} onClick={() => void add(item)}>
+                Add
+              </Button>
+            </div>
+          ))}
+          {results.isError ? <p className="py-6 text-center text-[13px] text-danger">{errorMessage(results.error)}</p> : null}
+          {results.isLoading ? <p className="py-6 text-center text-[13px] text-muted">Loading integrations...</p> : null}
+          {results.data && !results.data.length ? <p className="py-6 text-center text-[13px] text-muted">Nothing matches "{query}".</p> : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function ConnectionsRoute() {
   const connectors = useConnectors()
   const [tools, setTools] = useState<Connector | null>(null)
   const [secrets, setSecrets] = useState<Connector | null>(null)
   const [adding, setAdding] = useState(false)
+  const [browsing, setBrowsing] = useState(false)
   const servers = connectors.data?.servers ?? []
   const builtIn = servers.filter((s) => !s.isCustom)
   const custom = servers.filter((s) => s.isCustom)
@@ -319,7 +401,12 @@ export function ConnectionsRoute() {
       <PageHeader
         title="Connections"
         description="Apps your bots can use. Pick which bots get which apps when you edit a bot."
-        actions={<Button size="sm" onClick={() => setAdding(true)}><Plus /> Add MCP server</Button>}
+        actions={
+          <>
+            <Button size="sm" variant="primary" onClick={() => setBrowsing(true)}><Compass /> Browse integrations</Button>
+            <Button size="sm" onClick={() => setAdding(true)}><Plus /> Add MCP server</Button>
+          </>
+        }
       />
       <div className="mx-auto max-w-4xl px-8">
         <Section title="Apps">
@@ -345,6 +432,7 @@ export function ConnectionsRoute() {
       </div>
       <ToolsDialog connector={tools} onClose={() => setTools(null)} />
       <SecretsDialog connector={secrets} onClose={() => setSecrets(null)} />
+      <BrowseDialog open={browsing} onOpenChange={setBrowsing} onSecrets={setSecrets} />
       <AddServerDialog open={adding} onOpenChange={setAdding} templates={connectors.data?.templates ?? []} />
     </div>
   )

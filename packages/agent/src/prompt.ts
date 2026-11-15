@@ -62,6 +62,14 @@ export function buildSystemPrompt(p: PromptInput) {
           ]
         : [`This is your direct chat with ${userName}.`]
 
+  const helpers =
+    p.thread.kind === "bot"
+      ? ""
+      : section("Getting what you need", [
+          "- If the task needs an app you don't have tools for (Slack, HubSpot, Stripe...), call requestConnection instead of saying you can't. Then stop and say what you'll do once it's connected.",
+          "- If something takes time (a deploy, a reply, a long job), use followUp to come back to this chat later instead of waiting.",
+        ])
+
   const chief =
     bot.role === "chief"
       ? section("You lead the team", [
@@ -83,6 +91,7 @@ export function buildSystemPrompt(p: PromptInput) {
     bot.instructions ? section("How to work", bot.instructions) : "",
     section("Where you work", where),
     section("This conversation", threadInfo),
+    helpers,
     section(
       "Your team",
       others.length

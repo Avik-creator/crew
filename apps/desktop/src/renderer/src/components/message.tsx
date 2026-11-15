@@ -7,6 +7,7 @@ import { chatStamp, cn } from "@/lib/utils"
 
 import { ActivityGroup, BotEvent, EVENT_TOOLS } from "./activity"
 import { BotAvatar, colorOf } from "./bot-avatar"
+import { ConnectCard, isConnectRequest, type ConnectRequest } from "./connect-card"
 import { ApprovalCard } from "./inbox-cards"
 import { Markdown } from "./markdown"
 import { MentionChip } from "./mention-chip"
@@ -42,6 +43,7 @@ type Segment =
   | { kind: "tools"; parts: ToolPart[] }
   | { kind: "event"; part: ToolPart }
   | { kind: "approval"; part: ToolPart; approval: Approval }
+  | { kind: "connect"; request: ConnectRequest; why?: string }
 
 // Groups a message's parts into what the person sees: text bubbles, folded
 // runs of work steps, and events like a message to another bot
@@ -58,6 +60,9 @@ function segment(parts: UIMessage["parts"], approvals: Approval[] | undefined): 
       const tp = part as unknown as ToolPart
       const approval = tp.state === "approval-requested" ? approvals?.find((a) => a.toolCallId === tp.approval?.id) : undefined
       if (approval) out.push({ kind: "approval", part: tp, approval })
+      else if (toolNameOf(tp) === "requestConnection" && tp.state === "output-available" && isConnectRequest(tp.output)) {
+        out.push({ kind: "connect", request: tp.output, why: tp.input?.why })
+      }
       else if (EVENT_TOOLS.has(toolNameOf(tp))) out.push({ kind: "event", part: tp })
       else {
         const last = out[out.length - 1]
@@ -190,6 +195,8 @@ export const Message = memo(function Message({ author, parts, metadata, createdA
                   return <ActivityGroup key={i} parts={s.parts} live={streaming} working={workingSteps && s === lastSeg} />
                 case "event":
                   return <BotEvent key={i} part={s.part} fromBotId={bot?.id} />
+                case "connect":
+                  return <ConnectCard key={i} request={s.request} why={s.why} botName={bot?.name} />
                 case "approval":
                   return (
                     <ToolRow key={i} part={s.part}>

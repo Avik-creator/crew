@@ -14,6 +14,17 @@ const BRANDS: Record<string, { bg: string; label: string }> = {
 
 export function ConnectorIcon({ icon, size = "md" }: { icon: string; size?: "sm" | "md" | "lg" }) {
   const box = { sm: "size-6 rounded-md text-[10px] [&_svg]:size-3.5", md: "size-9 rounded-lg text-[12px] [&_svg]:size-4", lg: "size-11 rounded-xl text-[14px] [&_svg]:size-5" }[size]
+  // A letter tile for apps added from the integrations list
+  if (icon.startsWith("tile:")) {
+    const name = icon.slice(5).trim() || "?"
+    let h = 0
+    for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360
+    return (
+      <span className={cn("grid shrink-0 place-items-center font-bold text-white", box)} style={{ background: `hsl(${h} 45% 42%)` }}>
+        {name[0]!.toUpperCase()}
+      </span>
+    )
+  }
   const brand = BRANDS[icon]
   if (brand) {
     return (

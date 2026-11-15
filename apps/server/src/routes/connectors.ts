@@ -8,6 +8,9 @@ import {
   firstParty,
   assertPublicUrl,
   OAUTH_CALLBACK_PATH,
+  installRegistryEntry,
+  registryEntry,
+  searchRegistry,
   refreshTools,
   saveSecrets,
   startConnect,
@@ -140,6 +143,23 @@ export const connectorRoutes = new Hono<AppEnv>()
       })
       .returning()
     return c.json(server, 201)
+  })
+  // The integrations.sh registry: ~1,350 remote MCP servers to pick from
+  .get("/browse", async (c) => {
+    const q = (c.req.query("q") ?? "").slice(0, 100)
+    const results = await searchRegistry(q, 40).catch(() => badRequest("Couldn't load the integrations list. Try again."))
+    return c.json(
+      results.map((e) => ({ id: e.id, name: e.name, description: e.description, domain: e.domain, url: e.url, auth: e.auth, categories: e.categories.slice(0, 3) })),
+    )
+  })
+  // Adds a registry entry as a connector (or returns the one that already
+  // points at that URL); the app then connects it like any other
+  .post("/browse", json(z.object({ id: z.string().min(1).max(200) })), async (c) => {
+    const user = c.get("user")
+    const entry = await registryEntry(c.req.valid("json").id).catch(() => undefined)
+    if (!entry) notFound("That integration")
+    const server = await installRegistryEntry(user.id, entry).catch((err: Error) => badRequest(err.message))
+    return c.json(server)
   })
   .delete("/custom/:id", async (c) => {
     const user = c.get("user")
