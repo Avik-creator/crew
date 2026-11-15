@@ -27,4 +27,6 @@ export type AppEvent =
   | { type: "computer.status"; status: string }
   | { type: "device.status"; deviceId: string; status: "online" | "offline" }
   | { type: "connection.updated"; connectionId: string; status: string }
+  // A chat bridge (Telegram) was linked, failed or changed
+  | { type: "bridge.updated" }
   | { type: "notify"; title: string; body: string; threadId?: string | null }

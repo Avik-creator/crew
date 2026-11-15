@@ -2,7 +2,7 @@ import { createMCPClient } from "@ai-sdk/mcp"
 import { getWorkstation } from "@crew/computer"
 import { connections, db, mcpServers, type CachedTool, type Connection, type McpServer } from "@crew/db"
 import { encrypt, encryptJson } from "@crew/shared/node"
-import { and, eq } from "drizzle-orm"
+import { and, eq, isNull, lt } from "drizzle-orm"
 
 import { CATALOG } from "./catalog"
 import { flowFor, type CallbackParams } from "./flows"
@@ -55,30 +55,65 @@ export async function startConnect(userId: string, serverId: string) {
     await markActive(ctx.connection.id)
     return { connected: true as const }
   }
-  const result = await flow.start(ctx)
-  if ("connected" in result) await markActive(ctx.connection.id)
-  return result
+  const wasActive = ctx.connection.status === "active"
+  try {
+    const result = await flow.start(ctx)
+    if ("connected" in result) await markActive(ctx.connection.id)
+    else if (!wasActive) {
+      // A fresh sign-in: clear an old error so the card shows it's waiting
+      await db.update(connections).set({ status: "pending", error: null }).where(eq(connections.id, ctx.connection.id))
+    }
+    return result
+  } catch (err) {
+    if (!wasActive) await markFailed(ctx.connection.id, err)
+    throw err
+  }
 }
 
-// The OAuth redirect lands here; the state identifies the connection
+// The OAuth redirect lands here; the state identifies the connection.
+// On failure the connection is marked as an error, never left pending.
 export async function finishConnect(params: CallbackParams & { error?: string }) {
   const [connection] = await db.select().from(connections).where(eq(connections.state, params.state))
   if (!connection) throw new Error("This sign-in link has expired. Start again from Connections.")
-  const [server] = await db.select().from(mcpServers).where(eq(mcpServers.id, connection.serverId))
-  if (!server) throw new Error("Connector not found")
-  if (params.error) {
-    await db.update(connections).set({ status: "error", error: params.error, state: null }).where(eq(connections.id, connection.id))
-    throw new Error(`Sign-in was cancelled (${params.error})`)
+  try {
+    const [server] = await db.select().from(mcpServers).where(eq(mcpServers.id, connection.serverId))
+    if (!server) throw new Error("Connector not found")
+    if (params.error) throw new Error(`Sign-in was cancelled (${params.error})`)
+    const flow = flowFor(server)
+    if (!flow) throw new Error(`${server.name} doesn't use sign-in`)
+    const { accountLabel } = await flow.finish({ connection, server }, params)
+    await db
+      .update(connections)
+      .set({ status: "active", error: null, state: null, ...(accountLabel ? { accountLabel } : {}) })
+      .where(eq(connections.id, connection.id))
+    void refreshTools(connection.id).catch(() => {})
+    return { server, connection }
+  } catch (err) {
+    await markFailed(connection.id, err)
+    throw Object.assign(err instanceof Error ? err : new Error(String(err)), { connection })
   }
-  const flow = flowFor(server)
-  if (!flow) throw new Error(`${server.name} doesn't use sign-in`)
-  const { accountLabel } = await flow.finish({ connection, server }, params)
+}
+
+async function markFailed(connectionId: string, err: unknown) {
+  const error = err instanceof Error ? err.message : String(err)
+  await db.update(connections).set({ status: "error", error, state: null }).where(eq(connections.id, connectionId))
+}
+
+// A sign-in nobody finished (the browser tab was closed) stops counting
+// as pending after this long; its row is removed so the card resets.
+export const PENDING_SIGN_IN_MS = 10 * 60_000
+
+export async function expireAbandonedSignIns(userId: string) {
   await db
-    .update(connections)
-    .set({ status: "active", error: null, state: null, ...(accountLabel ? { accountLabel } : {}) })
-    .where(eq(connections.id, connection.id))
-  void refreshTools(connection.id).catch(() => {})
-  return { server, connection }
+    .delete(connections)
+    .where(
+      and(
+        eq(connections.userId, userId),
+        eq(connections.status, "pending"),
+        isNull(connections.bridgePort),
+        lt(connections.updatedAt, new Date(Date.now() - PENDING_SIGN_IN_MS)),
+      ),
+    )
 }
 
 async function markActive(connectionId: string) {

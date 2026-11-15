@@ -41,6 +41,7 @@ import { collabTools } from "./tools/collab"
 import { appTools } from "./tools/apps"
 import { browserTools } from "./tools/browser"
 import { computerTools, SCREEN_TOOLS } from "./tools/computer"
+import { followUpTools } from "./tools/followup"
 import { loadMemories, memoryTools } from "./tools/memory"
 import { teamTools } from "./tools/team"
 
@@ -258,6 +259,7 @@ export async function runTurn(run: Run, deps: TurnDeps): Promise<TurnResult> {
       ...(driver.browser ? browserTools(driver.browser) : {}),
       ...memoryTools(ctx),
       ...collabTools(ctx, originThreadId),
+      ...(thread.kind !== "bot" ? followUpTools(ctx) : {}),
       ...(bot.role === "chief" ? teamTools(ctx) : {}),
       ...connectors.tools,
     })

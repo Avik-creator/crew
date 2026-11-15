@@ -2,6 +2,7 @@ import { Cloud, FolderPlus, Laptop, Pause, RotateCcw, Trash, X } from "lucide-re
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
+import { TelegramSettings } from "@/components/telegram-settings"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge, PageHeader, Section, Switch } from "@/components/ui/misc"
@@ -242,6 +243,10 @@ export function SettingsRoute({ onSignOut }: { onSignOut: () => void }) {
 
         <Section title="This Mac">
           <ThisMac />
+        </Section>
+
+        <Section title="Telegram" description="Talk to your bots from your phone. Only the chat you link can reach them.">
+          <TelegramSettings />
         </Section>
 
         <Section title="Notifications">

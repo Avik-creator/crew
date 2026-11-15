@@ -5,6 +5,7 @@ import { logger } from "hono/logger"
 
 import { auth } from "./lib/auth"
 import { botRoutes } from "./routes/bots"
+import { bridgeRoutes } from "./routes/bridges"
 import { connectorRoutes, firstPartyMcpRoutes, oauthRoutes } from "./routes/connectors"
 import { deviceRoutes } from "./routes/devices"
 import { inboxRoutes } from "./routes/inbox"
@@ -35,6 +36,7 @@ export const app = new Hono()
   .route("/devices", deviceRoutes)
   .route("/memories", memoryRoutes)
   .route("/schedules", scheduleRoutes)
+  .route("/bridges", bridgeRoutes)
   .route("/search", searchRoutes)
   .route("/", settingsRoutes)
   .onError((err, c) => {

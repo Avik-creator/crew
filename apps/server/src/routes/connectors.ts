@@ -3,6 +3,7 @@ import {
   CATALOG,
   connectionWithServer,
   disconnect,
+  expireAbandonedSignIns,
   finishConnect,
   firstParty,
   assertPublicUrl,
@@ -58,6 +59,7 @@ export const connectorRoutes = new Hono<AppEnv>()
   .use(requireUser)
   .get("/", async (c) => {
     const user = c.get("user")
+    await expireAbandonedSignIns(user.id)
     const servers = await db
       .select()
       .from(mcpServers)
@@ -261,6 +263,9 @@ export const oauthRoutes = new Hono().get(OAUTH_CALLBACK_PATH, async (c) => {
     return c.html(page(`${server.name} is connected`, "Your bots can use it now. You can close this tab.", link))
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    // Tell the app right away so the card stops saying it's waiting
+    const failed = (err as { connection?: { id: string; userId: string } }).connection
+    if (failed) publish(failed.userId, { type: "connection.updated", connectionId: failed.id, status: "error" })
     return c.html(page("Couldn't connect", message, `${DEEP_LINK_SCHEME}://connections?error=1`), 400)
   }
 })

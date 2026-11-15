@@ -8,6 +8,7 @@ import { app } from "./app"
 import { publish } from "./lib/bus"
 import { relay } from "./lib/relay"
 import { runner } from "./lib/runner"
+import { startBridges } from "./lib/telegram"
 
 const port = Number(process.env.PORT ?? 8787)
 
@@ -18,6 +19,7 @@ setDeviceCanceller((deviceId, runId) => relay.cancel(deviceId, runId))
 
 runner.start()
 startScheduleClock(runner)
+void startBridges().catch((err) => console.error("Couldn't start chat bridges:", err))
 // Keeps computer status honest and cycles long-running sandboxes
 setInterval(() => void maintainComputers().catch((err) => console.error("Computer check failed:", err)), 10 * 60_000)
 

@@ -27,6 +27,7 @@ function ConnectorCard({ c, onTools, onSecrets }: { c: Connector; onTools: () =>
   const disconnect = useAction(() => api(`/connectors/${c.id}`, { method: "DELETE" }), [keys.connectors, keys.bots])
   const remove = useAction(() => api(`/connectors/custom/${c.id}`, { method: "DELETE" }), [keys.connectors, keys.bots])
   const active = c.connection?.status === "active"
+  const pending = c.connection?.status === "pending"
   const needsSecrets = c.authMode === "token" || (c.envKeys?.length ?? 0) > 0
 
   const start = async () => {
@@ -68,9 +69,16 @@ function ConnectorCard({ c, onTools, onSecrets }: { c: Connector; onTools: () =>
             </Button>
           </>
         ) : (
-          <Button size="sm" variant="primary" onClick={start} loading={connect.isPending} disabled={c.needsSetup}>
-            {c.connection?.status === "error" ? "Reconnect" : "Connect"}
-          </Button>
+          <>
+            <Button size="sm" variant="primary" onClick={start} loading={connect.isPending} disabled={c.needsSetup}>
+              {c.connection?.status === "error" ? "Reconnect" : pending ? "Open sign-in again" : "Connect"}
+            </Button>
+            {pending ? (
+              <Button size="sm" variant="ghost" onClick={() => disconnect.mutate(undefined)} loading={disconnect.isPending}>
+                Cancel
+              </Button>
+            ) : null}
+          </>
         )}
         {c.isCustom ? (
           <Button size="sm" variant="danger-ghost" className="ml-auto" onClick={() => confirm(`Remove ${c.name}?`) && remove.mutate(undefined)}>

@@ -505,6 +505,8 @@ export const schedules = pgTable(
     botId: text("bot_id")
       .notNull()
       .references(() => bots.id, { onDelete: "cascade" }),
+    // Fires in this chat when set (a bot's follow-up); otherwise the bot's direct chat
+    threadId: text("thread_id").references(() => threads.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     cron: text("cron"),
     runAt: timestamp("run_at", { withTimezone: true }),
@@ -517,6 +519,33 @@ export const schedules = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("schedules_user_idx").on(t.userId), index("schedules_due_idx").on(t.nextRunAt)],
+)
+
+// A chat app (Telegram for now) the person talks to their bots from. Only the
+// one linked chat is answered; anyone else who finds the bot is ignored.
+export const bridges = pgTable(
+  "bridges",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<"telegram">().notNull(),
+    token: text("token").notNull(), // encrypted
+    botUsername: text("bot_username"),
+    // Sent as "/start <code>" from the chat that should be linked
+    linkCode: text("link_code"),
+    chatId: text("chat_id"),
+    chatLabel: text("chat_label"),
+    // Who answers messages with no @name; null means the chief
+    botId: text("bot_id").references(() => bots.id, { onDelete: "set null" }),
+    lastUpdateId: integer("last_update_id"),
+    status: text("status").$type<"linking" | "active" | "error">().notNull().default("linking"),
+    error: text("error"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("bridges_user_kind_idx").on(t.userId, t.kind)],
 )
 
 // ── Relations (for db.query) ────────────────────────────────────────────────
@@ -558,6 +587,7 @@ export type Message = typeof messages.$inferSelect
 export type Run = typeof runs.$inferSelect
 export type Memory = typeof memories.$inferSelect
 export type McpServer = typeof mcpServers.$inferSelect
+export type Bridge = typeof bridges.$inferSelect
 export type Connection = typeof connections.$inferSelect
 export type Approval = typeof approvals.$inferSelect
 export type Takeover = typeof takeovers.$inferSelect

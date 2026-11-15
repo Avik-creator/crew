@@ -1,6 +1,6 @@
-import { ensureChief, liveReplies, routeGroupMessage, saveMessage } from "@crew/agent"
+import { ensureChief, liveReplies } from "@crew/agent"
 import { bots, db, messages, runs, threadMembers, threads } from "@crew/db"
-import { groupInputSchema, LIMITS, sendMessageSchema, type TurnReason } from "@crew/shared"
+import { groupInputSchema, LIMITS, sendMessageSchema } from "@crew/shared"
 import { json } from "../lib/validate"
 import { and, desc, eq, inArray, lt } from "drizzle-orm"
 import { Hono } from "hono"
@@ -8,6 +8,7 @@ import { streamSSE } from "hono/streaming"
 import { z } from "zod"
 
 import { publish } from "../lib/bus"
+import { postUserMessage } from "../lib/messages"
 import { badRequest, notFound, requireUser, type AppEnv } from "../lib/http"
 import { runner } from "../lib/runner"
 
@@ -145,47 +146,7 @@ export const threadRoutes = new Hono<AppEnv>()
     const user = c.get("user")
     const thread = await ownThread(user.id, c.req.param("id"))
     if (thread.kind === "bot") badRequest("This is a conversation between bots. Message one of them directly.")
-    const input = c.req.valid("json")
-    const parts = [
-      { type: "text", text: input.text },
-      ...input.images.map((img) => ({ type: "file", mediaType: img.mediaType, url: `data:${img.mediaType};base64,${img.base64}` })),
-    ]
-    const msg = await saveMessage({
-      threadId: thread.id,
-      role: "user",
-      authorType: "user",
-      authorId: user.id,
-      parts,
-      metadata: { authorType: "user", authorId: user.id, mentionBotIds: input.mentionBotIds },
-      chainId: null,
-    })
-    await db.update(threads).set({ lastReadAt: new Date(), archived: false }).where(eq(threads.id, thread.id))
-    publish(user.id, { type: "message.created", threadId: thread.id, messageId: msg.id })
-
-    let botIds: string[]
-    let reason: TurnReason = "chat"
-    let routedReason: string | null = null
-    if (thread.kind === "group") {
-      const route = await routeGroupMessage({ threadId: thread.id, text: input.text, mentionBotIds: input.mentionBotIds })
-      botIds = route.botIds
-      routedReason = route.reason
-      reason = "group"
-    } else {
-      botIds = (await membersOf([thread.id])).map((m) => m.botId)
-    }
-    const started = await Promise.all(
-      botIds.map(async (botId) => {
-        const runId = await runner.enqueue({
-          threadId: thread.id,
-          botId,
-          reason,
-          chainId: msg.id,
-          hop: 0,
-          triggerMessageId: msg.id,
-        })
-        return { botId, runId }
-      }),
-    )
+    const { message: msg, runs: started, routedReason } = await postUserMessage(user.id, thread, c.req.valid("json"))
     return c.json({ message: msg, runs: started, routedReason }, 201)
   })
 

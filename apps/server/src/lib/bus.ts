@@ -5,8 +5,17 @@ type Listener = (event: AppEvent) => void
 // In-process fan-out of events to each person's open apps (one server process)
 const listeners = new Map<string, Set<Listener>>()
 
+// Server-side listeners for every person's events (chat bridges)
+const taps = new Set<(userId: string, event: AppEvent) => void>()
+
 export function publish(userId: string, event: AppEvent) {
   for (const fn of listeners.get(userId) ?? []) fn(event)
+  for (const fn of taps) fn(userId, event)
+}
+
+export function tap(fn: (userId: string, event: AppEvent) => void) {
+  taps.add(fn)
+  return () => void taps.delete(fn)
 }
 
 export function subscribe(userId: string, fn: Listener) {

@@ -39,6 +39,7 @@ export const keys = {
   memories: ["memories"] as const,
   schedules: ["schedules"] as const,
   devices: ["devices"] as const,
+  bridges: ["bridges"] as const,
   rules: (deviceId: string) => ["rules", deviceId] as const,
 }
 
@@ -146,7 +147,14 @@ function mergeMessages(threadId: string, rows: StoredMessage[]) {
 }
 
 export const useConnectors = () =>
-  useQuery({ queryKey: keys.connectors, queryFn: () => api<{ servers: Connector[]; templates: ConnectorTemplate[] }>("/connectors") })
+  useQuery({
+    queryKey: keys.connectors,
+    queryFn: () => api<{ servers: Connector[]; templates: ConnectorTemplate[] }>("/connectors"),
+    // A sign-in can finish (or be abandoned) in the browser; check again
+    // when the user comes back and every so often while one is waiting
+    refetchOnWindowFocus: true,
+    refetchInterval: (q) => (q.state.data?.servers.some((s) => s.connection?.status === "pending") ? 15_000 : false),
+  })
 export const useConnectorTools = (serverId: string | null) =>
   useQuery({
     queryKey: keys.tools(serverId ?? ""),

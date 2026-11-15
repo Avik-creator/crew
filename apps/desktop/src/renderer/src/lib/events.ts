@@ -47,6 +47,9 @@ function handle(event: AppEvent) {
     case "device.status":
       invalidate(keys.devices)
       return
+    case "bridge.updated":
+      invalidate(keys.bridges)
+      return
     case "connection.updated":
       invalidate(keys.connectors)
       return

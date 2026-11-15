@@ -22,7 +22,7 @@ export async function syncSchedule(row: Schedule): Promise<Schedule> {
 }
 
 // The bot's direct thread with the person, created if it doesn't exist yet
-async function directThread(userId: string, botId: string) {
+export async function directThread(userId: string, botId: string) {
   const [existing] = await db
     .select({ id: threads.id })
     .from(threads)
@@ -34,12 +34,22 @@ async function directThread(userId: string, botId: string) {
   return t!.id
 }
 
+// A follow-up goes back to the chat it was set in, while the bot is still in it
+async function followUpThread(row: Schedule) {
+  if (!row.threadId) return null
+  const [member] = await db
+    .select({ id: threadMembers.threadId })
+    .from(threadMembers)
+    .where(and(eq(threadMembers.threadId, row.threadId), eq(threadMembers.botId, row.botId)))
+  return member?.id ?? null
+}
+
 // Posts the schedule's prompt in the bot's direct thread and starts a
 // background turn, so results land where the person already talks to the bot
 export async function fireSchedule(dispatcher: TurnDispatcher, row: Schedule) {
   const [bot] = await db.select().from(bots).where(eq(bots.id, row.botId))
   if (!bot || bot.status !== "active") return null
-  const threadId = await directThread(row.userId, row.botId)
+  const threadId = (await followUpThread(row)) ?? (await directThread(row.userId, row.botId))
   const msg = await saveMessage({
     threadId,
     role: "user",
